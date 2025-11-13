@@ -1,0 +1,19 @@
+# Ignore environment files
+backend/.env
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Node / React
+frontend/node_modules/
+**/node_modules/
+dist/
+build/
+
+# SQLite database
+backend/leveragecrm.db
+
+# Logs
+*.log
