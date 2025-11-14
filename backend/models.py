@@ -3,12 +3,12 @@ from sqlalchemy import (
     Enum, Text, Date, TIMESTAMP, Boolean
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 import uuid
 from datetime import datetime
 
-
-Base = declarative_base()
+# Import Base from database to ensure consistency
+from database import Base
 
 # 🧩 Roles
 class Role(Base):

@@ -155,16 +155,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Define redirect URI before OAuth registration
+REDIRECT_URI_GOOGLE = "http://127.0.0.1:8000/auth/google"
+
 # Authlib OAuth client
 oauth = OAuth()
 
-oauth.register(
-    name="google",
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
-)
+# Only register OAuth if credentials are provided
+if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
+    oauth.register(
+        name="google",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
+else:
+    print("⚠️  WARNING: Google OAuth not configured. GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing.")
 
 
 # ======================================================================
@@ -174,6 +181,19 @@ oauth.register(
 @app.get("/")
 def read_root():
     return {"message": "Leverage CRM backend is running 🚀"}
+
+
+@app.get("/debug/oauth")
+def debug_oauth():
+    """Debug endpoint to check OAuth configuration"""
+    return {
+        "google_client_id_set": bool(GOOGLE_CLIENT_ID),
+        "google_client_secret_set": bool(GOOGLE_CLIENT_SECRET),
+        "google_client_id_preview": GOOGLE_CLIENT_ID[:20] + "..." if GOOGLE_CLIENT_ID else None,
+        "frontend_url": FRONTEND_URL,
+        "redirect_uri": REDIRECT_URI_GOOGLE,
+        "oauth_registered": "google" in oauth._clients if hasattr(oauth, "_clients") else False,
+    }
 
 
 # ======================================================================
@@ -250,26 +270,140 @@ def update_user(user_id: str, data: dict = Body(...), db: Session = Depends(get_
 # IMPORTANT:
 # In Google Cloud Console, Authorized redirect URI must include:
 #   http://127.0.0.1:8000/auth/google
-
-REDIRECT_URI_GOOGLE = "http://127.0.0.1:8000/auth/google"
+# (REDIRECT_URI_GOOGLE is now defined above, before OAuth registration)
 
 
 @app.get("/login/google")
 async def login_via_google(request: Request):
+    # Check if OAuth is configured
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env"
+        )
+    
+    # Ensure redirect_uri has proper protocol
+    redirect_uri = REDIRECT_URI_GOOGLE
+    if not redirect_uri.startswith(("http://", "https://")):
+        redirect_uri = f"http://{redirect_uri}"
+    
+    print(f"🔍 Initiating Google OAuth with redirect_uri: {redirect_uri}")
+    
     # Always use the same redirect URI that is in Google Cloud Console
-    return await oauth.google.authorize_redirect(request, REDIRECT_URI_GOOGLE)
+    # This saves the redirect_uri in the session state for later retrieval
+    return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
 @app.get("/auth/google", name="auth_google_callback")
 async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
     try:
-        # Do NOT pass redirect_uri argument here (it caused the "multiple values" bug)
-        token = await oauth.google.authorize_access_token(request)
+        # Check if we have the required credentials
+        if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+            raise HTTPException(
+                status_code=500,
+                detail="Google OAuth not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env"
+            )
+        
+        # Debug: Log the request URL and query params
+        print(f"🔍 OAuth Callback - URL: {request.url}")
+        print(f"🔍 OAuth Callback - Query params: {dict(request.query_params)}")
+        
+        # Check for error from Google
+        error = request.query_params.get("error")
+        if error:
+            error_description = request.query_params.get("error_description", "Unknown error")
+            error_uri = request.query_params.get("error_uri", "")
+            print(f"❌ Google OAuth Error from callback: {error}")
+            print(f"   Description: {error_description}")
+            print(f"   URI: {error_uri}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Google authentication error: {error}. {error_description}"
+            )
+        
+        # Check if we have a code parameter
+        code = request.query_params.get("code")
+        if not code:
+            print("❌ No authorization code received from Google")
+            print(f"   Available params: {list(request.query_params.keys())}")
+            raise HTTPException(
+                status_code=400,
+                detail="No authorization code received from Google. The OAuth flow may have been interrupted."
+            )
+        
+        print(f"✅ Received authorization code: {code[:20]}...")
+        
+        # authlib automatically retrieves redirect_uri from the session state
+        # Do NOT pass redirect_uri explicitly - it causes "multiple values" error
+        # The redirect_uri is saved in session during authorize_redirect
+        try:
+            # Check session state for debugging
+            if hasattr(request, 'session'):
+                session_data = dict(request.session) if request.session else {}
+                print(f"🔍 Session state keys: {list(session_data.keys())}")
+            
+            # authlib gets redirect_uri from session automatically
+            token = await oauth.google.authorize_access_token(request)
+            print(f"✅ Successfully obtained access token")
+        except Exception as token_error:
+            error_msg = str(token_error)
+            print(f"❌ Failed to get access token:")
+            print(f"   Error type: {type(token_error).__name__}")
+            print(f"   Error message: {error_msg}")
+            
+            # Log session state for debugging
+            if hasattr(request, 'session'):
+                print(f"🔍 Session state: {dict(request.session) if request.session else 'No session'}")
+            
+            import traceback
+            print(traceback.format_exc())
+            raise
+        
+        if not token:
+            raise HTTPException(status_code=400, detail="Failed to get access token from Google")
+        
+        print(f"✅ Access token obtained, fetching user info...")
         resp = await oauth.google.get("userinfo", token=token)
         user_info = resp.json()
+        print(f"✅ User info received: {user_info.get('email', 'No email')}")
+        
+        if not user_info or "email" not in user_info:
+            raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        print("Google OAuth Error:", e)
-        raise HTTPException(status_code=400, detail="Google authentication failed")
+        # Log the full error for debugging
+        import traceback
+        error_trace = traceback.format_exc()
+        print("❌ Google OAuth Error Details:")
+        print(error_trace)
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        
+        # Provide more helpful error message
+        error_detail = str(e)
+        if "redirect_uri_mismatch" in error_detail.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Redirect URI mismatch. Make sure 'http://127.0.0.1:8000/auth/google' is in Google Cloud Console redirect URIs"
+            )
+        elif "invalid_client" in error_detail.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Google Client ID or Secret. Check your GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env"
+            )
+        elif "access_denied" in error_detail.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Access denied. User cancelled the Google authentication"
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Google authentication failed: {error_detail}. Check server logs for details."
+            )
 
     email = user_info["email"]
     name = user_info.get("name", "Google User")
