@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
+import api from "./api";
 
 export default function Signup() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
@@ -9,7 +9,7 @@ export default function Signup() {
   const handleSignup = async (e) => {
     e.preventDefault();
     try {
-      await axios.post("http://127.0.0.1:8000/register", {
+      await api.post("/register", {
         ...form,
         role: "Team",
       });
@@ -48,7 +48,10 @@ export default function Signup() {
         </p>
         <button
             type="button"
-            onClick={() => (window.location.href = "http://127.0.0.1:8000/login/google")}
+            onClick={() => {
+              const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+              window.location.href = `${apiBaseUrl}/login/google`;
+            }}
              className="w-full border border-gray-300 rounded-lg py-2 flex items-center justify-center gap-2 hover:bg-gray-100"
             >
              <img

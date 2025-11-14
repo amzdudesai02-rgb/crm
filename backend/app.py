@@ -195,6 +195,8 @@ app.add_middleware(
 # Use production URL from environment, otherwise use localhost
 # This allows the same code to work in both local and production
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+print(f"🔍 BACKEND_URL from env: {BACKEND_URL}")
+
 # For production on Render, ensure it has https://
 if BACKEND_URL and not BACKEND_URL.startswith(("http://", "https://")):
     # Auto-detect: if it contains render.com, use https, otherwise http
@@ -205,8 +207,10 @@ if BACKEND_URL and not BACKEND_URL.startswith(("http://", "https://")):
 elif not BACKEND_URL:
     BACKEND_URL = "http://127.0.0.1:8000"
 
+# Default redirect URI (will be overridden dynamically in production)
 REDIRECT_URI_GOOGLE = f"{BACKEND_URL}/auth/google"
-print(f"🔧 Configured REDIRECT_URI_GOOGLE: {REDIRECT_URI_GOOGLE}")
+print(f"🔧 Configured REDIRECT_URI_GOOGLE (default): {REDIRECT_URI_GOOGLE}")
+print(f"🔍 Full BACKEND_URL after processing: {BACKEND_URL}")
 
 # Authlib OAuth client
 oauth = OAuth()
@@ -333,16 +337,78 @@ async def login_via_google(request: Request):
             detail="Google OAuth not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env"
         )
     
-    # Ensure redirect_uri has proper protocol
+    # Detect production URL from request if BACKEND_URL env var is not set properly
+    # This is critical for production deployments
     redirect_uri = REDIRECT_URI_GOOGLE
+    
+    # If we're in production (detected by host header), use the production URL
+    host = request.headers.get('host', '')
+    if host and ('onrender.com' in host or 'render.com' in host):
+        # We're in production - construct the redirect URI from the request
+        scheme = request.headers.get('x-forwarded-proto', 'https')
+        if scheme not in ['http', 'https']:
+            scheme = 'https'
+        redirect_uri = f"{scheme}://{host}/auth/google"
+        print(f"🔍 Detected production environment, using redirect_uri: {redirect_uri}")
+    elif redirect_uri.startswith("http://127.0.0.1") and host and host != "127.0.0.1:8000":
+        # BACKEND_URL wasn't set, but we're clearly in production
+        # Try to construct from request
+        scheme = request.headers.get('x-forwarded-proto', 'https')
+        if scheme not in ['http', 'https']:
+            scheme = 'https'
+        redirect_uri = f"{scheme}://{host}/auth/google"
+        print(f"🔍 Overriding localhost redirect_uri with production: {redirect_uri}")
+    
+    # Ensure redirect_uri has proper protocol
     if not redirect_uri.startswith(("http://", "https://")):
-        redirect_uri = f"http://{redirect_uri}"
+        redirect_uri = f"https://{redirect_uri}" if 'onrender.com' in redirect_uri else f"http://{redirect_uri}"
     
     print(f"🔍 Initiating Google OAuth with redirect_uri: {redirect_uri}")
+    print(f"🔍 Request host: {host}")
+    print(f"🔍 BACKEND_URL env: {os.getenv('BACKEND_URL', 'NOT SET')}")
     
     # Always use the same redirect URI that is in Google Cloud Console
     # This saves the redirect_uri in the session state for later retrieval
     return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+async def manual_token_exchange(request: Request, code: str, redirect_uri: str):
+    """
+    Manual OAuth token exchange - bypasses authlib's URL construction issues.
+    This is used as a fallback when authlib fails with "Request URL missing protocol" error.
+    """
+    import httpx
+    
+    token_url = "https://oauth2.googleapis.com/token"
+    token_data = {
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+    
+    print(f"🔧 Manual token exchange:")
+    print(f"   Token URL: {token_url}")
+    print(f"   Redirect URI: {redirect_uri}")
+    
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(
+            token_url,
+            data=token_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+    
+    if token_response.status_code != 200:
+        error_text = token_response.text
+        print(f"❌ Manual token exchange failed: {error_text}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Token exchange failed: {error_text}"
+        )
+    
+    token_result = token_response.json()
+    return token_result
 
 
 @app.get("/auth/google", name="auth_google_callback")
@@ -384,6 +450,27 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
         
         print(f"✅ Received authorization code: {code[:20]}...")
         
+        # Get redirect_uri from session (saved during authorize_redirect)
+        # If not in session, construct from request headers
+        redirect_uri = None
+        if hasattr(request, 'session') and request.session:
+            # authlib stores redirect_uri in session - find it
+            session_data = dict(request.session) if request.session else {}
+            for key in session_data.keys():
+                if 'redirect_uri' in str(key).lower():
+                    redirect_uri = session_data.get(key)
+                    print(f"🔍 Found redirect_uri in session: {redirect_uri}")
+                    break
+        
+        # If not in session, construct from request headers
+        if not redirect_uri:
+            scheme = request.headers.get('x-forwarded-proto', 'https')
+            if scheme not in ['http', 'https']:
+                scheme = 'https'
+            host = request.headers.get('x-forwarded-host') or request.headers.get('host', 'crm-o52e.onrender.com')
+            redirect_uri = f"{scheme}://{host}/auth/google"
+            print(f"🔧 Constructed redirect_uri from headers: {redirect_uri}")
+        
         # authlib automatically retrieves redirect_uri from the session state
         # Do NOT pass redirect_uri explicitly - it causes "multiple values" error
         # The redirect_uri is saved in session during authorize_redirect
@@ -397,44 +484,60 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
                     if 'redirect_uri' in str(key).lower() or 'state' in str(key).lower():
                         print(f"🔍 Found session key: {key}")
             
-            # Fix: Ensure request URL has proper protocol for authlib
-            # In production (Render), the request URL might not have the scheme
-            # authlib needs it to construct the token request URL properly
-            request_scheme = getattr(request.url, 'scheme', None)
-            if not request_scheme:
-                # Detect from X-Forwarded-Proto header (Render sets this)
+            # CRITICAL FIX: Ensure request.url has scheme before authlib accesses it
+            # authlib internally uses request.url to construct URLs, and it MUST have a scheme
+            # Based on web search: This is a common issue with authlib in production behind proxies
+            scheme = getattr(request.url, 'scheme', None)
+            if not scheme:
+                # Detect from headers (Render sets X-Forwarded-Proto)
                 forwarded_proto = request.headers.get('x-forwarded-proto', 'https')
-                request_scheme = forwarded_proto if forwarded_proto in ['http', 'https'] else 'https'
-                print(f"🔍 No scheme in request.url, detected from headers: {request_scheme}")
-                
-                # Reconstruct the request URL with proper scheme
-                # This is a workaround for authlib's protocol error
-                host = request.headers.get('host', 'crm-o52e.onrender.com')
+                scheme = forwarded_proto if forwarded_proto in ['http', 'https'] else 'https'
+                host = request.headers.get('x-forwarded-host') or request.headers.get('host', 'crm-o52e.onrender.com')
                 path = str(request.url.path)
                 query = str(request.url.query) if request.url.query else ''
                 
-                # Create a new URL object with the proper scheme
-                if query:
-                    full_url = f"{request_scheme}://{host}{path}?{query}"
-                else:
-                    full_url = f"{request_scheme}://{host}{path}"
+                new_url_str = f"{scheme}://{host}{path}?{query}" if query else f"{scheme}://{host}{path}"
                 
-                # Replace the request.url with a properly formatted one
-                # Note: We can't directly modify request.url, but authlib should use headers
-                print(f"🔍 Reconstructed full URL: {full_url}")
+                # Force patch the request URL - this is critical for authlib
+                # Starlette URL is immutable, but we can replace the internal _url attribute
+                from starlette.datastructures import URL
+                request._url = URL(new_url_str)
+                print(f"🔧 CRITICAL: Fixed request URL before authlib: {new_url_str}")
             
             # Log request details for debugging
-            print(f"🔍 Request scheme: {getattr(request.url, 'scheme', 'NONE')}")
-            print(f"🔍 Request host: {request.headers.get('host', 'N/A')}")
-            print(f"🔍 X-Forwarded-Proto: {request.headers.get('x-forwarded-proto', 'N/A')}")
-            print(f"🔍 X-Forwarded-Host: {request.headers.get('x-forwarded-host', 'N/A')}")
-            print(f"🔍 Full request URL string: {str(request.url)}")
+            print(f"🔍 BEFORE token exchange:")
+            print(f"   Request scheme: {getattr(request.url, 'scheme', 'NONE')}")
+            print(f"   Request URL: {str(request.url)}")
+            print(f"   Request host: {request.headers.get('host', 'N/A')}")
+            print(f"   X-Forwarded-Proto: {request.headers.get('x-forwarded-proto', 'N/A')}")
             
-            # authlib gets redirect_uri from session automatically
-            # The protocol error happens when authlib tries to construct the token endpoint URL
-            # We've ensured the redirect_uri has protocol, so this should work now
-            token = await oauth.google.authorize_access_token(request)
-            print(f"✅ Successfully obtained access token")
+            # Verify the URL is correct before passing to authlib
+            final_scheme = getattr(request.url, 'scheme', None)
+            if not final_scheme:
+                # Last resort: Try to create a mock request with proper URL
+                print(f"⚠️  WARNING: URL scheme still missing! Attempting workaround...")
+                # We'll let it fail and catch the error to provide better debugging
+                raise HTTPException(
+                    status_code=500,
+                    detail="Internal error: Request URL missing scheme after all fixes. Check Render logs for details."
+                )
+            
+            # ALTERNATIVE: Manual token exchange if authlib fails
+            # This bypasses authlib's URL construction that causes "Request URL missing protocol" error
+            try:
+                print(f"🔍 Attempting token exchange with authlib (scheme: {final_scheme})...")
+                token = await oauth.google.authorize_access_token(request)
+                print(f"✅ Successfully obtained access token via authlib")
+            except Exception as authlib_error:
+                error_msg = str(authlib_error)
+                if "Request URL is missing" in error_msg or "protocol" in error_msg.lower():
+                    print(f"⚠️  authlib failed with protocol error, using manual token exchange...")
+                    # Manual token exchange - bypasses authlib's URL construction
+                    token = await manual_token_exchange(request, code, redirect_uri)
+                    print(f"✅ Successfully obtained access token via manual exchange")
+                else:
+                    # Re-raise if it's a different error
+                    raise
         except Exception as token_error:
             error_msg = str(token_error)
             print(f"❌ Failed to get access token:")
@@ -457,9 +560,28 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
         if not token:
             raise HTTPException(status_code=400, detail="Failed to get access token from Google")
         
+        # Extract access_token from token dict (authlib returns dict, manual returns dict too)
+        access_token_str = token.get("access_token") if isinstance(token, dict) else token
+        
         print(f"✅ Access token obtained, fetching user info...")
-        resp = await oauth.google.get("userinfo", token=token)
-        user_info = resp.json()
+        
+        # Get user info - use manual method if token is from manual exchange
+        if isinstance(token, dict) and "access_token" in token:
+            # Manual exchange was used - get user info manually
+            import httpx
+            userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
+            async with httpx.AsyncClient() as client:
+                userinfo_response = await client.get(
+                    userinfo_url,
+                    headers={"Authorization": f"Bearer {access_token_str}"}
+                )
+            if userinfo_response.status_code != 200:
+                raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+            user_info = userinfo_response.json()
+        else:
+            # authlib was used - use authlib's method
+            resp = await oauth.google.get("userinfo", token=token)
+            user_info = resp.json()
         print(f"✅ User info received: {user_info.get('email', 'No email')}")
         
         if not user_info or "email" not in user_info:

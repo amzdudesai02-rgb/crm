@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
+import api from "./api";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -25,7 +25,7 @@ export default function Login() {
     formData.append("password", password);
 
     try {
-      const res = await axios.post("http://127.0.0.1:8000/login", formData);
+      const res = await api.post("/login", formData);
       localStorage.setItem("token", res.data.access_token);
       navigate("/dashboard");
     } catch (err) {
@@ -35,7 +35,8 @@ export default function Login() {
 
   // ✅ Google login redirect
   const handleGoogleLogin = () => {
-    window.location.href = "http://127.0.0.1:8000/login/google";
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+    window.location.href = `${apiBaseUrl}/login/google`;
   };
 
   return (
