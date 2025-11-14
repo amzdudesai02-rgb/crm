@@ -16,6 +16,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from starlette.datastructures import URL
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -143,20 +144,69 @@ app.add_middleware(
     https_only=False,
 )
 
-# CORS – allow frontend
+# Middleware to fix request URL scheme in production (for authlib)
+# This ensures request.url always has a proper scheme
+@app.middleware("http")
+async def fix_request_scheme(request: Request, call_next):
+    """Fix request URL scheme for production environments (Render, etc.)"""
+    # In production behind a proxy, request.url.scheme might be empty
+    # authlib needs it to construct URLs properly
+    if not getattr(request.url, 'scheme', None):
+        # Detect scheme from X-Forwarded-Proto header (Render sets this)
+        forwarded_proto = request.headers.get('x-forwarded-proto', 'https')
+        scheme = forwarded_proto if forwarded_proto in ['http', 'https'] else 'https'
+        
+        # Reconstruct URL with proper scheme
+        host = request.headers.get('host') or request.headers.get('x-forwarded-host', 'crm-o52e.onrender.com')
+        path = str(request.url.path)
+        query = str(request.url.query) if request.url.query else ''
+        
+        # Create new URL with scheme - Starlette URL is immutable, so we patch the request
+        if query:
+            new_url_str = f"{scheme}://{host}{path}?{query}"
+        else:
+            new_url_str = f"{scheme}://{host}{path}"
+        
+        # Patch the request's URL by replacing the internal _url attribute
+        # This is a workaround for Starlette's immutable URL
+        from starlette.datastructures import URL
+        request._url = URL(new_url_str)
+        print(f"🔧 Fixed request URL scheme: {new_url_str}")
+    
+    response = await call_next(request)
+    return response
+
+# CORS – allow frontend (local and production)
+frontend_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://crm-kappa-pied.vercel.app",  # Production frontend
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=frontend_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Define redirect URI before OAuth registration
-REDIRECT_URI_GOOGLE = "http://127.0.0.1:8000/auth/google"
+# Use production URL from environment, otherwise use localhost
+# This allows the same code to work in both local and production
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+# For production on Render, ensure it has https://
+if BACKEND_URL and not BACKEND_URL.startswith(("http://", "https://")):
+    # Auto-detect: if it contains render.com, use https, otherwise http
+    if "render.com" in BACKEND_URL or "onrender.com" in BACKEND_URL:
+        BACKEND_URL = f"https://{BACKEND_URL}"
+    else:
+        BACKEND_URL = f"http://{BACKEND_URL}"
+elif not BACKEND_URL:
+    BACKEND_URL = "http://127.0.0.1:8000"
+
+REDIRECT_URI_GOOGLE = f"{BACKEND_URL}/auth/google"
+print(f"🔧 Configured REDIRECT_URI_GOOGLE: {REDIRECT_URI_GOOGLE}")
 
 # Authlib OAuth client
 oauth = OAuth()
@@ -268,8 +318,9 @@ def update_user(user_id: str, data: dict = Body(...), db: Session = Depends(get_
 # ======================================================================
 
 # IMPORTANT:
-# In Google Cloud Console, Authorized redirect URI must include:
-#   http://127.0.0.1:8000/auth/google
+# In Google Cloud Console, Authorized redirect URIs must include:
+#   For local: http://127.0.0.1:8000/auth/google
+#   For production: https://crm-o52e.onrender.com/auth/google
 # (REDIRECT_URI_GOOGLE is now defined above, before OAuth registration)
 
 
@@ -341,8 +392,47 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
             if hasattr(request, 'session'):
                 session_data = dict(request.session) if request.session else {}
                 print(f"🔍 Session state keys: {list(session_data.keys())}")
+                # Check if redirect_uri is in session
+                for key in session_data.keys():
+                    if 'redirect_uri' in str(key).lower() or 'state' in str(key).lower():
+                        print(f"🔍 Found session key: {key}")
+            
+            # Fix: Ensure request URL has proper protocol for authlib
+            # In production (Render), the request URL might not have the scheme
+            # authlib needs it to construct the token request URL properly
+            request_scheme = getattr(request.url, 'scheme', None)
+            if not request_scheme:
+                # Detect from X-Forwarded-Proto header (Render sets this)
+                forwarded_proto = request.headers.get('x-forwarded-proto', 'https')
+                request_scheme = forwarded_proto if forwarded_proto in ['http', 'https'] else 'https'
+                print(f"🔍 No scheme in request.url, detected from headers: {request_scheme}")
+                
+                # Reconstruct the request URL with proper scheme
+                # This is a workaround for authlib's protocol error
+                host = request.headers.get('host', 'crm-o52e.onrender.com')
+                path = str(request.url.path)
+                query = str(request.url.query) if request.url.query else ''
+                
+                # Create a new URL object with the proper scheme
+                if query:
+                    full_url = f"{request_scheme}://{host}{path}?{query}"
+                else:
+                    full_url = f"{request_scheme}://{host}{path}"
+                
+                # Replace the request.url with a properly formatted one
+                # Note: We can't directly modify request.url, but authlib should use headers
+                print(f"🔍 Reconstructed full URL: {full_url}")
+            
+            # Log request details for debugging
+            print(f"🔍 Request scheme: {getattr(request.url, 'scheme', 'NONE')}")
+            print(f"🔍 Request host: {request.headers.get('host', 'N/A')}")
+            print(f"🔍 X-Forwarded-Proto: {request.headers.get('x-forwarded-proto', 'N/A')}")
+            print(f"🔍 X-Forwarded-Host: {request.headers.get('x-forwarded-host', 'N/A')}")
+            print(f"🔍 Full request URL string: {str(request.url)}")
             
             # authlib gets redirect_uri from session automatically
+            # The protocol error happens when authlib tries to construct the token endpoint URL
+            # We've ensured the redirect_uri has protocol, so this should work now
             token = await oauth.google.authorize_access_token(request)
             print(f"✅ Successfully obtained access token")
         except Exception as token_error:
@@ -354,6 +444,11 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
             # Log session state for debugging
             if hasattr(request, 'session'):
                 print(f"🔍 Session state: {dict(request.session) if request.session else 'No session'}")
+            
+            # Log request details
+            print(f"🔍 Request URL: {request.url}")
+            print(f"🔍 Request scheme: {getattr(request.url, 'scheme', 'N/A')}")
+            print(f"🔍 Request host header: {request.headers.get('host', 'N/A')}")
             
             import traceback
             print(traceback.format_exc())
