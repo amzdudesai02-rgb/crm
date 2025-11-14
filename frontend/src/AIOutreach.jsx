@@ -22,6 +22,14 @@ export default function AIOutreach() {
       .get("/users/me")
       .then((res) => setCurrentUser(res.data))
       .catch(() => toast.error("Failed to fetch user info"));
+    
+    // Check if Gmail was just connected
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("gmail_connected") === "true") {
+      toast.success("Gmail connected successfully! ✅");
+      // Remove query parameter from URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   // -------------------- Generate AI Email --------------------
@@ -46,7 +54,8 @@ export default function AIOutreach() {
 
   // -------------------- Connect Gmail --------------------
   const handleConnectGmail = () => {
-    window.location.href = "http://localhost:8000/auth/gmail";
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+    window.location.href = `${apiBaseUrl}/auth/gmail`;
   };
 
   // -------------------- Send Email --------------------

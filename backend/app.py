@@ -651,8 +651,61 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
 
 
 # ======================================================================
-# GMAIL CONNECT CALLBACK (FOR SENDING EMAIL)
+# GMAIL CONNECT (FOR SENDING EMAIL)
 # ======================================================================
+
+@app.get("/auth/gmail")
+def gmail_auth_start(request: Request):
+    """
+    Start Gmail OAuth flow - redirects to Google consent screen.
+    """
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(500, "Gmail OAuth not configured. Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET")
+    
+    # Get backend URL from environment or request
+    BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+    
+    # For production on Render, ensure it has https://
+    if BACKEND_URL and not BACKEND_URL.startswith(("http://", "https://")):
+        if "render.com" in BACKEND_URL or "onrender.com" in BACKEND_URL:
+            BACKEND_URL = f"https://{BACKEND_URL}"
+        else:
+            BACKEND_URL = f"http://{BACKEND_URL}"
+    elif not BACKEND_URL:
+        BACKEND_URL = "http://127.0.0.1:8000"
+    
+    redirect_uri = f"{BACKEND_URL}/auth/gmail/callback"
+    
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [redirect_uri],
+            }
+        },
+        scopes=[
+            "https://www.googleapis.com/auth/gmail.send",
+            "https://www.googleapis.com/auth/userinfo.email",
+            "openid",
+        ],
+    )
+    flow.redirect_uri = redirect_uri
+    
+    # Generate authorization URL
+    authorization_url, state = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent"
+    )
+    
+    print(f"🔧 Gmail OAuth redirect URI: {redirect_uri}")
+    print(f"🔧 Gmail OAuth authorization URL: {authorization_url}")
+    
+    return RedirectResponse(url=authorization_url)
+
 
 @app.get("/auth/gmail/callback")
 def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
@@ -664,6 +717,20 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
     if not code:
         raise HTTPException(400, "Missing code")
 
+    # Get backend URL from environment or request
+    BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+    
+    # For production on Render, ensure it has https://
+    if BACKEND_URL and not BACKEND_URL.startswith(("http://", "https://")):
+        if "render.com" in BACKEND_URL or "onrender.com" in BACKEND_URL:
+            BACKEND_URL = f"https://{BACKEND_URL}"
+        else:
+            BACKEND_URL = f"http://{BACKEND_URL}"
+    elif not BACKEND_URL:
+        BACKEND_URL = "http://127.0.0.1:8000"
+    
+    redirect_uri = f"{BACKEND_URL}/auth/gmail/callback"
+    
     flow = Flow.from_client_config(
         {
             "web": {
@@ -671,7 +738,7 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
                 "client_secret": GOOGLE_CLIENT_SECRET,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": ["http://127.0.0.1:8000/auth/gmail/callback"],
+                "redirect_uris": [redirect_uri],
             }
         },
         scopes=[
@@ -680,7 +747,7 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
             "openid",
         ],
     )
-    flow.redirect_uri = "http://127.0.0.1:8000/auth/gmail/callback"
+    flow.redirect_uri = redirect_uri
     flow.fetch_token(code=code)
     creds = flow.credentials
 
@@ -696,7 +763,10 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
     user.gmail_access_token = creds.token
     user.gmail_refresh_token = creds.refresh_token
     db.commit()
-    return {"message": f"Gmail connected for {user_email}"}
+    
+    # Redirect back to frontend with success message
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_connected=true")
 
 
 # ======================================================================
