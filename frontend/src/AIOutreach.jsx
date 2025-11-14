@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "./api";
 import toast from "react-hot-toast";
+import AppHeader from "./components/AppHeader";
 
 export default function AIOutreach() {
   const [templates, setTemplates] = useState([]);
@@ -81,8 +82,10 @@ export default function AIOutreach() {
 
   // -------------------- UI --------------------
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-5xl mx-auto bg-white shadow-lg rounded-2xl p-6 space-y-6">
+    <div className="min-h-screen bg-gray-50">
+      <AppHeader />
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="bg-white shadow-lg rounded-2xl p-6 space-y-6">
         <h1 className="text-xl font-semibold">AI Outreach & Email Sender</h1>
 
         {/* Gmail Connect Button */}
@@ -197,6 +200,7 @@ export default function AIOutreach() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
