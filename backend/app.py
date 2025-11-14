@@ -741,64 +741,138 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
     Use Google OAuth2 Flow directly for Gmail send access.
     This route expects ?code=... from Google.
     """
-    code = request.query_params.get("code")
-    if not code:
-        raise HTTPException(400, "Missing code")
+    try:
+        # Check for error from Google
+        error = request.query_params.get("error")
+        if error:
+            error_description = request.query_params.get("error_description", "Unknown error")
+            print(f"❌ Gmail OAuth Error from callback: {error} - {error_description}")
+            FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error={error}")
+        
+        code = request.query_params.get("code")
+        if not code:
+            print("❌ No authorization code received from Google")
+            FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=no_code")
+        
+        print(f"✅ Received Gmail authorization code: {code[:20]}...")
 
-    # Detect environment from request headers (must match what was used in /auth/gmail)
-    host = request.headers.get('host', '')
-    scheme = request.headers.get('x-forwarded-proto', 'http')
-    
-    # Determine redirect URI based on environment (must match /auth/gmail)
-    if host and ('onrender.com' in host or 'render.com' in host):
-        # Production on Render
-        if scheme not in ['http', 'https']:
-            scheme = 'https'
-        redirect_uri = f"{scheme}://{host}/auth/gmail/callback"
-        print(f"🔍 Callback: Detected production environment (Render), using redirect_uri: {redirect_uri}")
-    else:
-        # Local development
-        redirect_uri = "http://127.0.0.1:8000/auth/gmail/callback"
-        print(f"🔍 Callback: Using local redirect_uri: {redirect_uri}")
-    
-    print(f"🔧 Gmail OAuth callback redirect URI: {redirect_uri}")
-    
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [redirect_uri],
-            }
-        },
-        scopes=[
-            "https://www.googleapis.com/auth/gmail.send",
-            "https://www.googleapis.com/auth/userinfo.email",
-            "openid",
-        ],
-    )
-    flow.redirect_uri = redirect_uri
-    flow.fetch_token(code=code)
-    creds = flow.credentials
+        # Detect environment from request headers (must match what was used in /auth/gmail)
+        host = request.headers.get('host', '')
+        scheme = request.headers.get('x-forwarded-proto', 'http')
+        
+        # Determine redirect URI based on environment (must match /auth/gmail)
+        if host and ('onrender.com' in host or 'render.com' in host):
+            # Production on Render
+            if scheme not in ['http', 'https']:
+                scheme = 'https'
+            redirect_uri = f"{scheme}://{host}/auth/gmail/callback"
+            print(f"🔍 Callback: Detected production environment (Render), using redirect_uri: {redirect_uri}")
+        else:
+            # Local development
+            redirect_uri = "http://127.0.0.1:8000/auth/gmail/callback"
+            print(f"🔍 Callback: Using local redirect_uri: {redirect_uri}")
+        
+        print(f"🔧 Gmail OAuth callback redirect URI: {redirect_uri}")
+        
+        # Create OAuth flow
+        flow = Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [redirect_uri],
+                }
+            },
+            scopes=[
+                "https://www.googleapis.com/auth/gmail.send",
+                "https://www.googleapis.com/auth/userinfo.email",
+                "openid",
+            ],
+        )
+        flow.redirect_uri = redirect_uri
+        
+        # Exchange code for token
+        print(f"🔍 Exchanging authorization code for access token...")
+        try:
+            flow.fetch_token(code=code)
+            creds = flow.credentials
+            print(f"✅ Successfully obtained Gmail access token")
+        except Exception as token_error:
+            error_msg = str(token_error)
+            print(f"❌ Failed to exchange code for token:")
+            print(f"   Error type: {type(token_error).__name__}")
+            print(f"   Error message: {error_msg}")
+            import traceback
+            print(traceback.format_exc())
+            FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=token_exchange_failed")
 
-    # Get user email from Google
-    oauth2_service = build("oauth2", "v2", credentials=creds)
-    userinfo = oauth2_service.userinfo().get().execute()
-    user_email = userinfo.get("email")
+        # Get user email from Google
+        print(f"🔍 Fetching user info from Google...")
+        try:
+            oauth2_service = build("oauth2", "v2", credentials=creds)
+            userinfo = oauth2_service.userinfo().get().execute()
+            user_email = userinfo.get("email")
+            print(f"✅ User email retrieved: {user_email}")
+        except Exception as userinfo_error:
+            error_msg = str(userinfo_error)
+            print(f"❌ Failed to get user info:")
+            print(f"   Error type: {type(userinfo_error).__name__}")
+            print(f"   Error message: {error_msg}")
+            import traceback
+            print(traceback.format_exc())
+            FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=userinfo_failed")
 
-    user = db.query(User).filter(User.email == user_email).first()
-    if not user:
-        raise HTTPException(404, "User not found in CRM")
+        if not user_email:
+            print(f"❌ No email in user info response")
+            FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=no_email")
 
-    user.gmail_access_token = creds.token
-    user.gmail_refresh_token = creds.refresh_token
-    db.commit()
+        # Find user in database
+        user = db.query(User).filter(User.email == user_email).first()
+        if not user:
+            print(f"❌ User not found in CRM: {user_email}")
+            FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=user_not_found")
+
+        # Save Gmail tokens
+        print(f"🔍 Saving Gmail tokens for user: {user_email}")
+        try:
+            user.gmail_access_token = creds.token
+            user.gmail_refresh_token = creds.refresh_token
+            db.commit()
+            print(f"✅ Gmail tokens saved successfully")
+        except Exception as db_error:
+            error_msg = str(db_error)
+            print(f"❌ Failed to save Gmail tokens:")
+            print(f"   Error type: {type(db_error).__name__}")
+            print(f"   Error message: {error_msg}")
+            import traceback
+            print(traceback.format_exc())
+            db.rollback()
+            FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=save_failed")
+        
+        # Redirect back to frontend with success message
+        FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        print(f"✅ Gmail OAuth completed successfully, redirecting to frontend")
+        return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_connected=true")
     
-    # Redirect back to frontend with success message
-    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_connected=true")
+    except Exception as e:
+        # Catch any unexpected errors
+        error_msg = str(e)
+        print(f"❌ Unexpected error in Gmail OAuth callback:")
+        print(f"   Error type: {type(e).__name__}")
+        print(f"   Error message: {error_msg}")
+        import traceback
+        print(traceback.format_exc())
+        FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=unexpected_error")
 
 
 # ======================================================================

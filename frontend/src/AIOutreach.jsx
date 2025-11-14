@@ -23,10 +23,43 @@ export default function AIOutreach() {
       .then((res) => setCurrentUser(res.data))
       .catch(() => toast.error("Failed to fetch user info"));
     
-    // Check if Gmail was just connected
+    // Check if Gmail was just connected or if there was an error
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("gmail_connected") === "true") {
       toast.success("Gmail connected successfully! ✅");
+      // Remove query parameter from URL
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (urlParams.get("gmail_error")) {
+      const error = urlParams.get("gmail_error");
+      let errorMessage = "Failed to connect Gmail";
+      
+      switch (error) {
+        case "no_code":
+          errorMessage = "No authorization code received. Please try again.";
+          break;
+        case "token_exchange_failed":
+          errorMessage = "Failed to exchange authorization code. Please try again.";
+          break;
+        case "userinfo_failed":
+          errorMessage = "Failed to get user information from Google.";
+          break;
+        case "no_email":
+          errorMessage = "No email found in Google account.";
+          break;
+        case "user_not_found":
+          errorMessage = "User not found in CRM. Please login first.";
+          break;
+        case "save_failed":
+          errorMessage = "Failed to save Gmail connection. Please try again.";
+          break;
+        case "unexpected_error":
+          errorMessage = "An unexpected error occurred. Please check server logs.";
+          break;
+        default:
+          errorMessage = `Gmail connection error: ${error}`;
+      }
+      
+      toast.error(errorMessage);
       // Remove query parameter from URL
       window.history.replaceState({}, "", window.location.pathname);
     }
