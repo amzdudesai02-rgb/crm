@@ -249,6 +249,28 @@ def debug_oauth():
         "oauth_registered": "google" in oauth._clients if hasattr(oauth, "_clients") else False,
     }
 
+@app.get("/debug/gmail")
+def debug_gmail(request: Request):
+    """Debug endpoint to check Gmail OAuth redirect URI"""
+    host = request.headers.get('host', '')
+    scheme = request.headers.get('x-forwarded-proto', 'http')
+    
+    if host and ('onrender.com' in host or 'render.com' in host):
+        if scheme not in ['http', 'https']:
+            scheme = 'https'
+        redirect_uri = f"{scheme}://{host}/auth/gmail/callback"
+    else:
+        redirect_uri = "http://127.0.0.1:8000/auth/gmail/callback"
+    
+    return {
+        "gmail_redirect_uri": redirect_uri,
+        "request_host": host,
+        "request_scheme": scheme,
+        "google_client_id_set": bool(GOOGLE_CLIENT_ID),
+        "google_client_secret_set": bool(GOOGLE_CLIENT_SECRET),
+        "instructions": "Add this redirect_uri to Google Cloud Console → APIs & Services → Credentials → Your OAuth 2.0 Client → Authorized redirect URIs"
+    }
+
 
 # ======================================================================
 # USER AUTH (EMAIL+PASSWORD) + PROFILE
@@ -662,19 +684,25 @@ def gmail_auth_start(request: Request):
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         raise HTTPException(500, "Gmail OAuth not configured. Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET")
     
-    # Get backend URL from environment or request
-    BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+    # Detect environment from request headers (similar to Google login)
+    host = request.headers.get('host', '')
+    scheme = request.headers.get('x-forwarded-proto', 'http')
     
-    # For production on Render, ensure it has https://
-    if BACKEND_URL and not BACKEND_URL.startswith(("http://", "https://")):
-        if "render.com" in BACKEND_URL or "onrender.com" in BACKEND_URL:
-            BACKEND_URL = f"https://{BACKEND_URL}"
-        else:
-            BACKEND_URL = f"http://{BACKEND_URL}"
-    elif not BACKEND_URL:
-        BACKEND_URL = "http://127.0.0.1:8000"
+    # Determine redirect URI based on environment
+    if host and ('onrender.com' in host or 'render.com' in host):
+        # Production on Render
+        if scheme not in ['http', 'https']:
+            scheme = 'https'
+        redirect_uri = f"{scheme}://{host}/auth/gmail/callback"
+        print(f"🔍 Detected production environment (Render), using redirect_uri: {redirect_uri}")
+    else:
+        # Local development
+        redirect_uri = "http://127.0.0.1:8000/auth/gmail/callback"
+        print(f"🔍 Using local redirect_uri: {redirect_uri}")
     
-    redirect_uri = f"{BACKEND_URL}/auth/gmail/callback"
+    print(f"🔧 Gmail OAuth redirect URI: {redirect_uri}")
+    print(f"🔧 Request host: {host}")
+    print(f"🔧 Request scheme: {scheme}")
     
     flow = Flow.from_client_config(
         {
@@ -717,19 +745,23 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
     if not code:
         raise HTTPException(400, "Missing code")
 
-    # Get backend URL from environment or request
-    BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+    # Detect environment from request headers (must match what was used in /auth/gmail)
+    host = request.headers.get('host', '')
+    scheme = request.headers.get('x-forwarded-proto', 'http')
     
-    # For production on Render, ensure it has https://
-    if BACKEND_URL and not BACKEND_URL.startswith(("http://", "https://")):
-        if "render.com" in BACKEND_URL or "onrender.com" in BACKEND_URL:
-            BACKEND_URL = f"https://{BACKEND_URL}"
-        else:
-            BACKEND_URL = f"http://{BACKEND_URL}"
-    elif not BACKEND_URL:
-        BACKEND_URL = "http://127.0.0.1:8000"
+    # Determine redirect URI based on environment (must match /auth/gmail)
+    if host and ('onrender.com' in host or 'render.com' in host):
+        # Production on Render
+        if scheme not in ['http', 'https']:
+            scheme = 'https'
+        redirect_uri = f"{scheme}://{host}/auth/gmail/callback"
+        print(f"🔍 Callback: Detected production environment (Render), using redirect_uri: {redirect_uri}")
+    else:
+        # Local development
+        redirect_uri = "http://127.0.0.1:8000/auth/gmail/callback"
+        print(f"🔍 Callback: Using local redirect_uri: {redirect_uri}")
     
-    redirect_uri = f"{BACKEND_URL}/auth/gmail/callback"
+    print(f"🔧 Gmail OAuth callback redirect URI: {redirect_uri}")
     
     flow = Flow.from_client_config(
         {
