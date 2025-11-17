@@ -94,14 +94,32 @@ class OutreachCampaign(Base):
 class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    deal_id = Column(UUID(as_uuid=True), ForeignKey("deals.id"), nullable=True)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"))
+    reference = Column(String, nullable=True)
     order_date = Column(Date)
-    total_amount = Column(DECIMAL)
-    status = Column(Enum("draft", "confirmed", "delivered", name="po_status"))
+    expected_ship_date = Column(Date, nullable=True)
+    expected_arrival_date = Column(Date, nullable=True)
+    currency = Column(String, default="USD")
+    payment_terms = Column(String, nullable=True)
+    incoterm = Column(String, nullable=True)
+    units_total = Column(Integer, default=0)
+    cogs_total = Column(DECIMAL, default=0)
+    freight_cost = Column(DECIMAL, default=0)
+    customs_cost = Column(DECIMAL, default=0)
+    fba_fees = Column(DECIMAL, default=0)
+    other_costs = Column(DECIMAL, default=0)
+    total_amount = Column(DECIMAL, default=0)
+    landed_cost_per_unit = Column(DECIMAL, default=0)
+    expected_margin_percent = Column(DECIMAL, default=0)
+    status = Column(Enum("draft", "confirmed", "in_transit", "delivered", "closed", name="po_status"))
+    notes = Column(Text, nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_at = Column(TIMESTAMP)
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    updated_at = Column(TIMESTAMP, default=datetime.utcnow)
     company = relationship("Company")
     creator = relationship("User")
+    deal = relationship("Deal")
 
 # 🧩 Order Items
 class OrderItem(Base):
@@ -112,6 +130,38 @@ class OrderItem(Base):
     quantity = Column(Integer)
     unit_cost = Column(DECIMAL)
     total_cost = Column(DECIMAL)
+    purchase_order = relationship("PurchaseOrder")
+
+
+class Shipment(Base):
+    __tablename__ = "shipments"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    purchase_order_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"))
+    carrier = Column(String, nullable=True)
+    tracking_number = Column(String, nullable=True)
+    status = Column(Enum("label_created", "in_transit", "delivered", "exception", "cancelled", name="shipment_status"))
+    departed_at = Column(TIMESTAMP, nullable=True)
+    eta = Column(TIMESTAMP, nullable=True)
+    delivered_at = Column(TIMESTAMP, nullable=True)
+    last_checked_at = Column(TIMESTAMP, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    purchase_order = relationship("PurchaseOrder")
+
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    purchase_order_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"))
+    invoice_number = Column(String, nullable=True)
+    amount = Column(DECIMAL, nullable=False, default=0)
+    currency = Column(String, default="USD")
+    status = Column(Enum("draft", "issued", "paid", "partial", "disputed", name="invoice_status"))
+    due_date = Column(Date, nullable=True)
+    paid_at = Column(TIMESTAMP, nullable=True)
+    file_url = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
     purchase_order = relationship("PurchaseOrder")
 
 # 🧩 Transactions

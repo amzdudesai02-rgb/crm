@@ -1,6 +1,6 @@
 import os
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List, Optional, Dict
 
 from email.mime.text import MIMEText
@@ -54,6 +54,8 @@ from models import (
     Reminder,
     Tag,
     TagLink,
+    Shipment,
+    Invoice,
 )
 from ai_service import render_template, improve_with_ai
 
@@ -107,6 +109,29 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def calculate_landed_cost_metrics(
+    units_total: int,
+    cogs_total: float,
+    freight_cost: float = 0,
+    customs_cost: float = 0,
+    fba_fees: float = 0,
+    other_costs: float = 0,
+    expected_revenue: float | None = None,
+) -> Dict[str, float]:
+    """Return total cost, cost per unit, and expected gross margin %."""
+    units = max(units_total or 0, 1)
+    total_cost = float(cogs_total or 0) + float(freight_cost or 0) + float(customs_cost or 0) + float(fba_fees or 0) + float(other_costs or 0)
+    cost_per_unit = total_cost / units if units else 0
+    margin_percent = 0.0
+    if expected_revenue and expected_revenue > 0:
+        margin_percent = ((expected_revenue - total_cost) / expected_revenue) * 100
+    return {
+        "total_cost": total_cost,
+        "cost_per_unit": cost_per_unit,
+        "margin_percent": margin_percent,
+    }
 
 
 def get_current_user(
@@ -1003,6 +1028,73 @@ class GenerateOut(BaseModel):
     used_template: Optional[str] = None
 
 
+class PurchaseOrderCreate(BaseModel):
+    company_id: str
+    deal_id: Optional[str] = None
+    reference: Optional[str] = None
+    order_date: Optional[date] = None
+    expected_ship_date: Optional[date] = None
+    expected_arrival_date: Optional[date] = None
+    currency: str = "USD"
+    payment_terms: Optional[str] = None
+    incoterm: Optional[str] = None
+    units_total: int
+    cogs_total: float
+    freight_cost: float = 0
+    customs_cost: float = 0
+    fba_fees: float = 0
+    other_costs: float = 0
+    notes: Optional[str] = None
+
+
+class PurchaseOrderCostUpdate(BaseModel):
+    units_total: Optional[int] = None
+    cogs_total: Optional[float] = None
+    freight_cost: Optional[float] = None
+    customs_cost: Optional[float] = None
+    fba_fees: Optional[float] = None
+    other_costs: Optional[float] = None
+
+
+class ShipmentCreate(BaseModel):
+    purchase_order_id: str
+    carrier: Optional[str] = None
+    tracking_number: Optional[str] = None
+    status: str = "label_created"
+    departed_at: Optional[datetime] = None
+    eta: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class ShipmentUpdate(BaseModel):
+    carrier: Optional[str] = None
+    tracking_number: Optional[str] = None
+    status: Optional[str] = None
+    departed_at: Optional[datetime] = None
+    eta: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class InvoiceCreate(BaseModel):
+    purchase_order_id: str
+    invoice_number: Optional[str] = None
+    amount: float
+    currency: str = "USD"
+    status: str = "issued"
+    due_date: Optional[date] = None
+    file_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class InvoiceUpdate(BaseModel):
+    amount: Optional[float] = None
+    status: Optional[str] = None
+    due_date: Optional[date] = None
+    paid_at: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
 @app.post("/ai/generate_email", response_model=GenerateOut)
 def generate_email(payload: GenerateIn, db: Session = Depends(get_db)):
     if payload.body_override:
@@ -1053,18 +1145,264 @@ def sync_amazon_data(db: Session = Depends(get_db)):
 
 @app.get("/orders")
 def get_orders(db: Session = Depends(get_db)):
-    return db.query(PurchaseOrder).all()
+    orders = db.query(PurchaseOrder).order_by(PurchaseOrder.order_date.desc().nulls_last()).all()
+    return orders
+
+
+@app.get("/orders/{po_id}")
+def get_order_detail(po_id: str, db: Session = Depends(get_db)):
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
+    if not order:
+        raise HTTPException(404, "Purchase order not found")
+    shipments = db.query(Shipment).filter(Shipment.purchase_order_id == po_id).all()
+    invoices = db.query(Invoice).filter(Invoice.purchase_order_id == po_id).all()
+    return {
+        "order": order,
+        "shipments": shipments,
+        "invoices": invoices,
+    }
+
+
+@app.post("/orders")
+def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    company = db.query(Company).filter(Company.id == payload.company_id).first()
+    if not company:
+        raise HTTPException(404, "Company not found")
+    
+    expected_revenue = None
+    if payload.deal_id:
+        deal = db.query(Deal).filter(Deal.id == payload.deal_id).first()
+        if deal:
+            expected_revenue = float(deal.value or 0)
+        else:
+            raise HTTPException(404, "Deal not found")
+    
+    metrics = calculate_landed_cost_metrics(
+        payload.units_total,
+        payload.cogs_total,
+        payload.freight_cost,
+        payload.customs_cost,
+        payload.fba_fees,
+        payload.other_costs,
+        expected_revenue=expected_revenue,
+    )
+    
+    order = PurchaseOrder(
+        deal_id=payload.deal_id,
+        company_id=payload.company_id,
+        reference=payload.reference,
+        order_date=payload.order_date,
+        expected_ship_date=payload.expected_ship_date,
+        expected_arrival_date=payload.expected_arrival_date,
+        currency=payload.currency,
+        payment_terms=payload.payment_terms,
+        incoterm=payload.incoterm,
+        units_total=payload.units_total,
+        cogs_total=payload.cogs_total,
+        freight_cost=payload.freight_cost,
+        customs_cost=payload.customs_cost,
+        fba_fees=payload.fba_fees,
+        other_costs=payload.other_costs,
+        total_amount=metrics["total_cost"],
+        landed_cost_per_unit=metrics["cost_per_unit"],
+        expected_margin_percent=metrics["margin_percent"],
+        status="draft",
+        notes=payload.notes,
+        created_by=current_user.id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return {"message": "Purchase order created", "id": str(order.id)}
+
+
+@app.post("/orders/from-deal/{deal_id}")
+def create_po_from_deal(deal_id: str, payload: PurchaseOrderCostUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    if not deal:
+        raise HTTPException(404, "Deal not found")
+    if not deal.company_id:
+        raise HTTPException(400, "Deal is missing an associated company")
+    
+    units_total = payload.units_total or 0
+    cogs_total = payload.cogs_total or float(deal.value or 0)
+    freight = payload.freight_cost or 0
+    customs = payload.customs_cost or 0
+    fba = payload.fba_fees or 0
+    other = payload.other_costs or 0
+    
+    metrics = calculate_landed_cost_metrics(
+        units_total,
+        cogs_total,
+        freight,
+        customs,
+        fba,
+        other,
+        expected_revenue=float(deal.value or 0),
+    )
+    
+    order = PurchaseOrder(
+        deal_id=deal.id,
+        company_id=deal.company_id,
+        reference=f"PO-{str(deal.id)[:6].upper()}",
+        order_date=datetime.utcnow().date(),
+        units_total=units_total,
+        cogs_total=cogs_total,
+        freight_cost=freight,
+        customs_cost=customs,
+        fba_fees=fba,
+        other_costs=other,
+        total_amount=metrics["total_cost"],
+        landed_cost_per_unit=metrics["cost_per_unit"],
+        expected_margin_percent=metrics["margin_percent"],
+        status="draft",
+        created_by=current_user.id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return {"message": "Purchase order drafted from deal", "id": str(order.id)}
+
+
+@app.put("/orders/{po_id}/costs")
+def update_po_costs(po_id: str, payload: PurchaseOrderCostUpdate, db: Session = Depends(get_db)):
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
+    if not order:
+        raise HTTPException(404, "Purchase order not found")
+    
+    if payload.units_total is not None:
+        order.units_total = payload.units_total
+    if payload.cogs_total is not None:
+        order.cogs_total = payload.cogs_total
+    if payload.freight_cost is not None:
+        order.freight_cost = payload.freight_cost
+    if payload.customs_cost is not None:
+        order.customs_cost = payload.customs_cost
+    if payload.fba_fees is not None:
+        order.fba_fees = payload.fba_fees
+    if payload.other_costs is not None:
+        order.other_costs = payload.other_costs
+    
+    expected_revenue = None
+    if order.deal_id:
+        deal = db.query(Deal).filter(Deal.id == order.deal_id).first()
+        if deal:
+            expected_revenue = float(deal.value or 0)
+    
+    metrics = calculate_landed_cost_metrics(
+        order.units_total or 0,
+        float(order.cogs_total or 0),
+        float(order.freight_cost or 0),
+        float(order.customs_cost or 0),
+        float(order.fba_fees or 0),
+        float(order.other_costs or 0),
+        expected_revenue=expected_revenue,
+    )
+    order.total_amount = metrics["total_cost"]
+    order.landed_cost_per_unit = metrics["cost_per_unit"]
+    order.expected_margin_percent = metrics["margin_percent"]
+    order.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(order)
+    return {"message": "Purchase order costs updated", "totals": metrics}
+
+
+@app.post("/shipments")
+def create_shipment(payload: ShipmentCreate, db: Session = Depends(get_db)):
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == payload.purchase_order_id).first()
+    if not order:
+        raise HTTPException(404, "Purchase order not found")
+    shipment = Shipment(
+        purchase_order_id=payload.purchase_order_id,
+        carrier=payload.carrier,
+        tracking_number=payload.tracking_number,
+        status=payload.status,
+        departed_at=payload.departed_at,
+        eta=payload.eta,
+        notes=payload.notes,
+        last_checked_at=datetime.utcnow(),
+    )
+    db.add(shipment)
+    db.commit()
+    db.refresh(shipment)
+    return {"message": "Shipment created", "id": str(shipment.id)}
+
+
+@app.put("/shipments/{shipment_id}")
+def update_shipment(shipment_id: str, payload: ShipmentUpdate, db: Session = Depends(get_db)):
+    shipment = db.query(Shipment).filter(Shipment.id == shipment_id).first()
+    if not shipment:
+        raise HTTPException(404, "Shipment not found")
+    for field, value in payload.dict(exclude_unset=True).items():
+        setattr(shipment, field, value)
+    shipment.last_checked_at = datetime.utcnow()
+    db.commit()
+    db.refresh(shipment)
+    return {"message": "Shipment updated"}
+
+
+@app.get("/shipments")
+def list_shipments(po_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(Shipment)
+    if po_id:
+        query = query.filter(Shipment.purchase_order_id == po_id)
+    return query.order_by(Shipment.created_at.desc()).all()
+
+
+@app.post("/invoices")
+def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db)):
+    order = db.query(PurchaseOrder).filter(PurchaseOrder.id == payload.purchase_order_id).first()
+    if not order:
+        raise HTTPException(404, "Purchase order not found")
+    invoice = Invoice(
+        purchase_order_id=payload.purchase_order_id,
+        invoice_number=payload.invoice_number,
+        amount=payload.amount,
+        currency=payload.currency,
+        status=payload.status,
+        due_date=payload.due_date,
+        file_url=payload.file_url,
+        notes=payload.notes,
+    )
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+    return {"message": "Invoice recorded", "id": str(invoice.id)}
+
+
+@app.put("/invoices/{invoice_id}")
+def update_invoice(invoice_id: str, payload: InvoiceUpdate, db: Session = Depends(get_db)):
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(404, "Invoice not found")
+    for field, value in payload.dict(exclude_unset=True).items():
+        setattr(invoice, field, value)
+    db.commit()
+    db.refresh(invoice)
+    return {"message": "Invoice updated"}
+
+
+@app.get("/invoices")
+def list_invoices(po_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(Invoice)
+    if po_id:
+        query = query.filter(Invoice.purchase_order_id == po_id)
+    return query.order_by(Invoice.created_at.desc()).all()
 
 
 @app.get("/profit")
 def get_profit(db: Session = Depends(get_db)):
     orders = db.query(PurchaseOrder).all()
-    total_revenue = sum(float(o.total_amount or 0) for o in orders)
-    total_expense = 0.0  # later link to expenses
-    profit = total_revenue - total_expense
+    total_revenue = sum(float((order.deal.value if order.deal else order.total_amount) or 0) for order in orders)
+    total_landed_cost = sum(float(order.total_amount or 0) for order in orders)
+    profit = total_revenue - total_landed_cost
     return {
         "total_revenue": total_revenue,
-        "total_expense": total_expense,
+        "total_landed_cost": total_landed_cost,
         "profit": profit,
     }
 
