@@ -205,8 +205,8 @@ async def fix_request_scheme(request: Request, call_next):
 
 # CORS – allow frontend (local and production)
 frontend_origins = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "https://crm-kappa-pied.vercel.app",  # Production frontend
 ]
 
@@ -525,67 +525,57 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
         # The redirect_uri is saved in session during authorize_redirect
         try:
             # Check session state for debugging
-            if hasattr(request, 'session'):
+            if hasattr(request, "session"):
                 session_data = dict(request.session) if request.session else {}
                 print(f"🔍 Session state keys: {list(session_data.keys())}")
-                # Check if redirect_uri is in session
                 for key in session_data.keys():
-                    if 'redirect_uri' in str(key).lower() or 'state' in str(key).lower():
+                    if "redirect_uri" in str(key).lower() or "state" in str(key).lower():
                         print(f"🔍 Found session key: {key}")
-            
-            # CRITICAL FIX: Ensure request.url has scheme before authlib accesses it
-            # authlib internally uses request.url to construct URLs, and it MUST have a scheme
-            # Based on web search: This is a common issue with authlib in production behind proxies
-            scheme = getattr(request.url, 'scheme', None)
+
+            # Ensure request.url has scheme before authlib accesses it
+            scheme = getattr(request.url, "scheme", None)
             if not scheme:
-                # Detect from headers (Render sets X-Forwarded-Proto)
-                forwarded_proto = request.headers.get('x-forwarded-proto', 'https')
-                scheme = forwarded_proto if forwarded_proto in ['http', 'https'] else 'https'
-                host = request.headers.get('x-forwarded-host') or request.headers.get('host', 'crm-o52e.onrender.com')
+                forwarded_proto = request.headers.get("x-forwarded-proto", "https")
+                scheme = forwarded_proto if forwarded_proto in ["http", "https"] else "https"
+                host = request.headers.get("x-forwarded-host") or request.headers.get(
+                    "host", "crm-o52e.onrender.com"
+                )
                 path = str(request.url.path)
-                query = str(request.url.query) if request.url.query else ''
-                
-                new_url_str = f"{scheme}://{host}{path}?{query}" if query else f"{scheme}://{host}{path}"
-                
-                # Force patch the request URL - this is critical for authlib
-                # Starlette URL is immutable, but we can replace the internal _url attribute
+                query = str(request.url.query) if request.url.query else ""
+                new_url_str = (
+                    f"{scheme}://{host}{path}?{query}" if query else f"{scheme}://{host}{path}"
+                )
+
                 from starlette.datastructures import URL
+
                 request._url = URL(new_url_str)
                 print(f"🔧 CRITICAL: Fixed request URL before authlib: {new_url_str}")
-            
-            # Log request details for debugging
-            print(f"🔍 BEFORE token exchange:")
+
+            print("🔍 BEFORE token exchange:")
             print(f"   Request scheme: {getattr(request.url, 'scheme', 'NONE')}")
             print(f"   Request URL: {str(request.url)}")
             print(f"   Request host: {request.headers.get('host', 'N/A')}")
             print(f"   X-Forwarded-Proto: {request.headers.get('x-forwarded-proto', 'N/A')}")
-            
-            # Verify the URL is correct before passing to authlib
-            final_scheme = getattr(request.url, 'scheme', None)
+
+            final_scheme = getattr(request.url, "scheme", None)
             if not final_scheme:
-                # Last resort: Try to create a mock request with proper URL
-                print(f"⚠️  WARNING: URL scheme still missing! Attempting workaround...")
-                # We'll let it fail and catch the error to provide better debugging
+                print("⚠️  WARNING: URL scheme still missing! Attempting workaround...")
                 raise HTTPException(
                     status_code=500,
-                    detail="Internal error: Request URL missing scheme after all fixes. Check Render logs for details."
+                    detail="Internal error: Request URL missing scheme after all fixes. Check Render logs for details.",
                 )
-            
-            # ALTERNATIVE: Manual token exchange if authlib fails
-            # This bypasses authlib's URL construction that causes "Request URL missing protocol" error
+
             try:
                 print(f"🔍 Attempting token exchange with authlib (scheme: {final_scheme})...")
-        token = await oauth.google.authorize_access_token(request)
-                print(f"✅ Successfully obtained access token via authlib")
+                token = await oauth.google.authorize_access_token(request)
+                print("✅ Successfully obtained access token via authlib")
             except Exception as authlib_error:
                 error_msg = str(authlib_error)
                 if "Request URL is missing" in error_msg or "protocol" in error_msg.lower():
-                    print(f"⚠️  authlib failed with protocol error, using manual token exchange...")
-                    # Manual token exchange - bypasses authlib's URL construction
+                    print("⚠️  authlib failed with protocol error, using manual token exchange...")
                     token = await manual_token_exchange(request, code, redirect_uri)
-                    print(f"✅ Successfully obtained access token via manual exchange")
+                    print("✅ Successfully obtained access token via manual exchange")
                 else:
-                    # Re-raise if it's a different error
                     raise
         except Exception as token_error:
             error_msg = str(token_error)
@@ -616,21 +606,20 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
         
         # Get user info - use manual method if token is from manual exchange
         if isinstance(token, dict) and "access_token" in token:
-            # Manual exchange was used - get user info manually
             import httpx
+
             userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
             async with httpx.AsyncClient() as client:
                 userinfo_response = await client.get(
                     userinfo_url,
-                    headers={"Authorization": f"Bearer {access_token_str}"}
+                    headers={"Authorization": f"Bearer {access_token_str}"},
                 )
             if userinfo_response.status_code != 200:
                 raise HTTPException(status_code=400, detail="Failed to get user info from Google")
             user_info = userinfo_response.json()
         else:
-            # authlib was used - use authlib's method
-        resp = await oauth.google.get("userinfo", token=token)
-        user_info = resp.json()
+            resp = await oauth.google.get("userinfo", token=token)
+            user_info = resp.json()
         print(f"✅ User info received: {user_info.get('email', 'No email')}")
         
         if not user_info or "email" not in user_info:
@@ -744,7 +733,6 @@ def gmail_auth_start(request: Request):
         scopes=[
             "https://www.googleapis.com/auth/gmail.send",
             "https://www.googleapis.com/auth/userinfo.email",
-            "https://www.googleapis.com/auth/userinfo.profile",
             "openid",
         ],
     )
@@ -778,8 +766,8 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
             FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error={error}")
         
-    code = request.query_params.get("code")
-    if not code:
+        code = request.query_params.get("code")
+        if not code:
             print("❌ No authorization code received from Google")
             FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=no_code")
@@ -805,30 +793,29 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
         print(f"🔧 Gmail OAuth callback redirect URI: {redirect_uri}")
         
         # Create OAuth flow
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
+        flow = Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
                     "redirect_uris": [redirect_uri],
-            }
-        },
-        scopes=[
-            "https://www.googleapis.com/auth/gmail.send",
-            "https://www.googleapis.com/auth/userinfo.email",
-                "https://www.googleapis.com/auth/userinfo.profile",
-            "openid",
-        ],
-    )
+                }
+            },
+            scopes=[
+                "https://www.googleapis.com/auth/gmail.send",
+                "https://www.googleapis.com/auth/userinfo.email",
+                "openid",
+            ],
+        )
         flow.redirect_uri = redirect_uri
         
         # Exchange code for token
         print(f"🔍 Exchanging authorization code for access token...")
         try:
-    flow.fetch_token(code=code)
-    creds = flow.credentials
+            flow.fetch_token(code=code)
+            creds = flow.credentials
             print(f"✅ Successfully obtained Gmail access token")
         except Exception as token_error:
             error_msg = str(token_error)
@@ -840,12 +827,12 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
             FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=token_exchange_failed")
 
-    # Get user email from Google
+        # Get user email from Google
         print(f"🔍 Fetching user info from Google...")
         try:
-    oauth2_service = build("oauth2", "v2", credentials=creds)
-    userinfo = oauth2_service.userinfo().get().execute()
-    user_email = userinfo.get("email")
+            oauth2_service = build("oauth2", "v2", credentials=creds)
+            userinfo = oauth2_service.userinfo().get().execute()
+            user_email = userinfo.get("email")
             print(f"✅ User email retrieved: {user_email}")
         except Exception as userinfo_error:
             error_msg = str(userinfo_error)
@@ -863,8 +850,8 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=no_email")
 
         # Find user in database
-    user = db.query(User).filter(User.email == user_email).first()
-    if not user:
+        user = db.query(User).filter(User.email == user_email).first()
+        if not user:
             print(f"❌ User not found in CRM: {user_email}")
             FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=user_not_found")
@@ -872,9 +859,9 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
         # Save Gmail tokens
         print(f"🔍 Saving Gmail tokens for user: {user_email}")
         try:
-    user.gmail_access_token = creds.token
-    user.gmail_refresh_token = creds.refresh_token
-    db.commit()
+            user.gmail_access_token = creds.token
+            user.gmail_refresh_token = creds.refresh_token
+            db.commit()
             print(f"✅ Gmail tokens saved successfully")
         except Exception as db_error:
             error_msg = str(db_error)
