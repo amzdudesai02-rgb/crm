@@ -244,13 +244,13 @@ oauth = OAuth()
 
 # Only register OAuth if credentials are provided
 if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
-oauth.register(
-    name="google",
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
-)
+    oauth.register(
+        name="google",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
 else:
     print("⚠️  WARNING: Google OAuth not configured. GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing.")
 
