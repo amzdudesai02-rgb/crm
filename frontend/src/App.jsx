@@ -8,6 +8,8 @@ import Dashboard from "./Dashboard";
 import Profile from "./Profile";
 import Pipeline from "./Pipeline";
 import AIOutreach from "./AIOutreach";
+import Operations from "./Operations";
+import Intelligence from "./Intelligence";
 
 // Component to handle OAuth token from URL (works on any route)
 function OAuthTokenHandler() {
@@ -62,6 +64,14 @@ function App() {
         <Route
            path="/ai-outreach"
            element={token ? <AIOutreach /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/operations"
+          element={token ? <Operations /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/intelligence"
+          element={token ? <Intelligence /> : <Navigate to="/login" replace />}
         />
       </Routes>
     </Router>

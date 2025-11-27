@@ -1,49 +1,78 @@
 // src/pages/Dashboard.jsx
 import React, { useState, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import dayjs from "dayjs";
 import AppHeader from "./components/AppHeader";
 import useAuthUser from "./hooks/useAuthUser";
 import api from "./api";
+
+const defaultStats = { deals: 0, contacts: 0, companies: 0, revenue: 0 };
 
 export default function Dashboard() {
   const token = localStorage.getItem("token");
   const { loading, user } = useAuthUser();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
-  const [stats, setStats] = useState({ deals: 0, contacts: 0, companies: 0, revenue: 0 });
+  const [stats, setStats] = useState(defaultStats);
   const [recentDeals, setRecentDeals] = useState([]);
   const [recentContacts, setRecentContacts] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [operations, setOperations] = useState({ orders: [], shipments: [], invoices: [] });
+  const [aiQueue, setAiQueue] = useState([]);
 
   useEffect(() => {
-    if (token) {
-      // Load dashboard stats
-      Promise.all([
-        api.get("/pipeline/deals").catch(() => ({ data: [] })),
-        api.get("/contacts").catch(() => ({ data: [] })),
-        api.get("/companies").catch(() => ({ data: [] })),
-        api.get("/profit").catch(() => ({ data: { profit: 0 } })),
-      ]).then(([dealsRes, contactsRes, companiesRes, profitRes]) => {
+    if (!token) return;
+
+    Promise.all([
+      api.get("/pipeline/deals").catch(() => ({ data: [] })),
+      api.get("/contacts").catch(() => ({ data: [] })),
+      api.get("/companies").catch(() => ({ data: [] })),
+      api.get("/profit").catch(() => ({ data: { total_revenue: 0, total_expense: 0 } })),
+      api.get("/reminders").catch(() => ({ data: [] })),
+      api.get("/orders").catch(() => ({ data: [] })),
+      api.get("/shipments").catch(() => ({ data: [] })),
+      api.get("/invoices").catch(() => ({ data: [] })),
+    ]).then(
+      ([
+        dealsRes,
+        contactsRes,
+        companiesRes,
+        profitRes,
+        remindersRes,
+        ordersRes,
+        shipmentsRes,
+        invoicesRes,
+      ]) => {
         const deals = dealsRes.data || [];
         const contacts = contactsRes.data || [];
         const companies = companiesRes.data || [];
         const totalRevenue = deals.reduce((sum, deal) => sum + (Number(deal.value) || 0), 0);
-        
+        const orders = ordersRes.data || [];
+        const shipments = shipmentsRes.data || [];
+        const invoices = invoicesRes.data || [];
+
         setStats({
           deals: deals.length,
           contacts: contacts.length,
           companies: companies.length,
           revenue: totalRevenue,
         });
-        
-        // Get recent deals (last 5)
+
         setRecentDeals(deals.slice(0, 5));
         setRecentContacts(contacts.slice(0, 5));
-      });
-    }
+        setReminders((remindersRes.data || []).slice(0, 4));
+        setOperations({ orders, shipments, invoices });
+
+        const outreachCandidates = deals
+          .filter((deal) => !deal.last_email_sent_at)
+          .slice(0, 3);
+        setAiQueue(outreachCandidates);
+      }
+    );
   }, [token]);
 
   if (!token) return <Navigate to="/login" replace />;
-  
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -61,45 +90,224 @@ export default function Dashboard() {
     { id: "amazon", label: "Amazon", icon: "📦" },
   ];
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <AppHeader />
-      
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Welcome Section */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">
-            Welcome back, {user?.name || "User"}! 👋
-          </h1>
-          <p className="text-gray-600 text-sm mt-1">
-            Manage your Amazon wholesale operations from one place
-          </p>
-        </div>
+  const formatCurrency = (value) =>
+    `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white border rounded-xl p-4 shadow-sm">
-            <div className="text-sm text-gray-500 mb-1">Total Deals</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.deals}</div>
-          </div>
-          <div className="bg-white border rounded-xl p-4 shadow-sm">
-            <div className="text-sm text-gray-500 mb-1">Contacts</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.contacts}</div>
-          </div>
-          <div className="bg-white border rounded-xl p-4 shadow-sm">
-            <div className="text-sm text-gray-500 mb-1">Companies</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.companies}</div>
-          </div>
-          <div className="bg-white border rounded-xl p-4 shadow-sm">
-            <div className="text-sm text-gray-500 mb-1">Total Revenue</div>
-            <div className="text-2xl font-bold text-green-600">
-              ${stats.revenue.toLocaleString()}
+  const latestShipment = operations.shipments?.[0];
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <AppHeader />
+
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
+        <section className="rounded-3xl bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white p-8 shadow-xl">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div>
+              <p className="text-sm uppercase tracking-[0.3em] text-white/60">
+                Control Center · Phase 0–3 Ready
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold">
+                Hey {user?.name?.split(" ")[0] || "operator"}, keep the flywheel moving.
+              </h1>
+              <p className="mt-2 text-base text-white/70">
+                Deals, outreach, operations, and profit intelligence — wired to the same data stack.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4 bg-white/10 rounded-2xl p-4 border border-white/10">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-white/60">Open POs</p>
+                <p className="text-3xl font-semibold">{operations.orders?.length || 0}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-white/60">Shipments moving</p>
+                <p className="text-3xl font-semibold">{operations.shipments?.length || 0}</p>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
+
+        <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[
+            { label: "Total Deals", value: stats.deals, sub: "Across all stages" },
+            { label: "Contacts", value: stats.contacts, sub: "Brand + supplier" },
+            { label: "Companies", value: stats.companies, sub: "Active counterparts" },
+            { label: "Pipeline Value", value: formatCurrency(stats.revenue), sub: "Expected gross" },
+          ].map((card) => (
+            <div
+              key={card.label}
+              className="rounded-2xl bg-white border border-gray-100 p-5 shadow-sm hover:shadow-md transition"
+            >
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-500">{card.label}</p>
+              <p className="mt-3 text-3xl font-semibold text-gray-900">{card.value}</p>
+              <p className="text-xs text-gray-400 mt-1">{card.sub}</p>
+            </div>
+          ))}
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-6">
+            <div className="rounded-3xl bg-white p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Next actions</h2>
+                <button
+                  onClick={() => navigate("/pipeline")}
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  Go to pipeline →
+                </button>
+              </div>
+              <div className="mt-4 grid gap-3">
+                {reminders.length > 0 ? (
+                  reminders.map((reminder) => (
+                    <div
+                      key={reminder.id}
+                      className="flex items-center justify-between rounded-2xl border border-gray-100 px-4 py-3"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900">{reminder.title || "Reminder"}</p>
+                        <p className="text-sm text-gray-500">
+                          {reminder.description || "Follow up"} ·{" "}
+                          {dayjs(reminder.due_date).format("MMM D")}
+                        </p>
+                      </div>
+                      <button className="text-xs px-3 py-1 rounded-full bg-gray-900 text-white">
+                        Mark done
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-500 text-center py-6">
+                    No reminders yet — create one from any deal.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-white p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Recent deals</h2>
+                <button
+                  onClick={() => navigate("/pipeline")}
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  View all
+                </button>
+              </div>
+              <div className="divide-y">
+                {recentDeals.length ? (
+                  recentDeals.map((deal) => (
+                    <div key={deal.id} className="py-3 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-900">{deal.title}</p>
+                        <p className="text-sm text-gray-500">
+                          {deal.stage || "New"} · {formatCurrency(deal.value)}
+                        </p>
+                      </div>
+                      {deal.due_date && (
+                        <p className="text-xs text-gray-400">
+                          Due {dayjs(deal.due_date).format("MMM D")}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 py-6 text-center">No deals yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-3xl bg-white p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Operations snapshot</h2>
+                <button
+                  onClick={() => navigate("/operations")}
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  Open Operations →
+                </button>
+              </div>
+              <div className="space-y-4">
+                {(operations.orders || []).slice(0, 3).map((order) => (
+                  <div key={order.id} className="rounded-2xl border border-gray-100 p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-gray-900">{order.reference || "Purchase Order"}</p>
+                      <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 capitalize">
+                        {order.status || "draft"}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {formatCurrency(order.total_amount)} · {order.units_total || 0} units
+                    </p>
+                    {order.expected_arrival_date && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        ETA {dayjs(order.expected_arrival_date).format("MMM D")}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {!operations.orders?.length && (
+                  <div className="text-sm text-gray-500 text-center py-6">
+                    No purchase orders yet — convert a deal into a PO.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-white p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">AI outreach queue</h2>
+                <button
+                  onClick={() => navigate("/ai-outreach")}
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  Compose email →
+                </button>
+              </div>
+              <div className="space-y-3">
+                {aiQueue.length ? (
+                  aiQueue.map((deal) => (
+                    <div key={deal.id} className="rounded-2xl border border-gray-100 p-4">
+                      <p className="font-medium text-gray-900">{deal.title}</p>
+                      <p className="text-sm text-gray-500">
+                        Stage: {deal.stage || "New"} · Owner: {deal.owner || "You"}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-6">
+                    All caught up. New deals will land here automatically.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-white p-6 border border-gray-100 shadow-sm">
+              <h2 className="text-lg font-semibold mb-4">Logistics highlight</h2>
+              {latestShipment ? (
+                <div>
+                  <p className="text-sm text-gray-500 uppercase tracking-[0.3em]">
+                    {latestShipment.status}
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-gray-900">
+                    {latestShipment.carrier || "Carrier TBD"}
+                  </p>
+                  {latestShipment.eta && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      ETA {dayjs(latestShipment.eta).format("MMM D, YYYY")}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No shipments yet.</p>
+              )}
+            </div>
+          </div>
+        </section>
 
         {/* Tabs Navigation */}
-        <div className="bg-white border rounded-xl p-1 mb-6 flex gap-1 overflow-x-auto">
+        <div className="bg-white border rounded-3xl p-1 flex gap-1 overflow-x-auto shadow-sm">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -112,10 +320,8 @@ export default function Dashboard() {
                   setActiveTab(tab.id);
                 }
               }}
-              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                activeTab === tab.id
-                  ? "bg-gray-900 text-white"
-                  : "text-gray-600 hover:bg-gray-100"
+              className={`px-4 py-2 rounded-2xl text-sm font-medium whitespace-nowrap transition ${
+                activeTab === tab.id ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100"
               }`}
             >
               <span className="mr-2">{tab.icon}</span>
@@ -125,99 +331,92 @@ export default function Dashboard() {
         </div>
 
         {/* Tab Content */}
-        <div className="bg-white border rounded-xl p-6">
+        <div className="bg-white border rounded-3xl p-6 shadow-sm">
           {activeTab === "overview" && (
             <div className="space-y-6">
               <h2 className="text-lg font-semibold mb-4">Overview</h2>
-              
-              {/* Recent Deals */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-700">Recent Deals</h3>
-                  <button
-                    onClick={() => navigate("/pipeline")}
-                    className="text-xs text-blue-600 hover:underline"
-                  >
-                    View All →
-                  </button>
-                </div>
-                {recentDeals.length > 0 ? (
-                  <div className="space-y-2">
-                    {recentDeals.map((deal) => (
-                      <div
-                        key={deal.id}
-                        onClick={() => navigate("/pipeline")}
-                        className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium text-sm">{deal.title}</div>
-                            <div className="text-xs text-gray-500">
-                              ${Number(deal.value || 0).toLocaleString()}
-                            </div>
-                          </div>
-                          {deal.due_date && (
-                            <div className="text-xs text-gray-400">
-                              Due: {new Date(deal.due_date).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-400">
-                    <p className="text-sm">No deals yet</p>
+              {/* reuse earlier cards */}
+              <div className="grid gap-6 md:grid-cols-2">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">Recent Deals</h3>
                     <button
                       onClick={() => navigate("/pipeline")}
-                      className="mt-2 text-sm text-blue-600 hover:underline"
+                      className="text-xs text-blue-600 hover:underline"
                     >
-                      Create your first deal →
+                      View All →
                     </button>
                   </div>
-                )}
-              </div>
-
-              {/* Recent Contacts */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-700">Recent Contacts</h3>
-                  <button
-                    onClick={() => setActiveTab("contacts")}
-                    className="text-xs text-blue-600 hover:underline"
-                  >
-                    View All →
-                  </button>
-                </div>
-                {recentContacts.length > 0 ? (
-                  <div className="space-y-2">
-                    {recentContacts.map((contact) => (
-                      <div
-                        key={contact.id}
-                        className="border rounded-lg p-3 hover:bg-gray-50"
+                  {recentDeals.length > 0 ? (
+                    <div className="space-y-2">
+                      {recentDeals.map((deal) => (
+                        <div
+                          key={deal.id}
+                          onClick={() => navigate("/pipeline")}
+                          className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium text-sm">{deal.title}</div>
+                              <div className="text-xs text-gray-500">{formatCurrency(deal.value)}</div>
+                            </div>
+                            {deal.due_date && (
+                              <div className="text-xs text-gray-400">
+                                Due: {dayjs(deal.due_date).format("MMM D")}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-400">
+                      <p className="text-sm">No deals yet</p>
+                      <button
+                        onClick={() => navigate("/pipeline")}
+                        className="mt-2 text-sm text-blue-600 hover:underline"
                       >
-                        <div className="font-medium text-sm">{contact.name}</div>
-                        <div className="text-xs text-gray-500">{contact.email}</div>
-                        {contact.phone && (
-                          <div className="text-xs text-gray-400">{contact.phone}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-400">
-                    <p className="text-sm">No contacts yet</p>
+                        Create your first deal →
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">Recent Contacts</h3>
                     <button
                       onClick={() => setActiveTab("contacts")}
-                      className="mt-2 text-sm text-blue-600 hover:underline"
+                      className="text-xs text-blue-600 hover:underline"
                     >
-                      Add your first contact →
+                      View All →
                     </button>
                   </div>
-                )}
+                  {recentContacts.length > 0 ? (
+                    <div className="space-y-2">
+                      {recentContacts.map((contact) => (
+                        <div key={contact.id} className="border rounded-lg p-3 hover:bg-gray-50">
+                          <div className="font-medium text-sm">{contact.name}</div>
+                          <div className="text-xs text-gray-500">{contact.email}</div>
+                          {contact.phone && (
+                            <div className="text-xs text-gray-400">{contact.phone}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-400">
+                      <p className="text-sm">No contacts yet</p>
+                      <button
+                        onClick={() => setActiveTab("contacts")}
+                        className="mt-2 text-sm text-blue-600 hover:underline"
+                      >
+                        Add your first contact →
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Quick Actions */}
               <div className="border-t pt-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

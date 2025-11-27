@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import useAuthUser from "../hooks/useAuthUser";
 import toast from "react-hot-toast";
 import api from "../api";
 
 export default function AppHeader() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loading } = useAuthUser();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -55,6 +56,31 @@ export default function AppHeader() {
             </p>
           </div>
         </div>
+
+        {/* ---- Primary Nav ---- */}
+        <nav className="hidden lg:flex items-center gap-3 text-sm font-medium">
+          {[
+            { label: "Dashboard", path: "/dashboard" },
+            { label: "Operations", path: "/operations" },
+            { label: "Intelligence", path: "/intelligence" },
+            { label: "AI Outreach", path: "/ai-outreach" },
+          ].map((link) => {
+            const isActive = location.pathname.startsWith(link.path);
+            return (
+              <Link
+                key={link.path}
+                to={link.path}
+                className={`px-3 py-2 rounded-full transition ${
+                  isActive
+                    ? "bg-gray-900 text-white shadow-sm"
+                    : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
 
         {/* ---- Global Search ---- */}
         <form onSubmit={handleSearch} className="relative w-72 hidden md:block">
