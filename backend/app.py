@@ -733,6 +733,7 @@ def gmail_auth_start(request: Request):
         scopes=[
             "https://www.googleapis.com/auth/gmail.send",
             "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/userinfo.profile",
             "openid",
         ],
     )
@@ -806,6 +807,7 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
             scopes=[
                 "https://www.googleapis.com/auth/gmail.send",
                 "https://www.googleapis.com/auth/userinfo.email",
+                "https://www.googleapis.com/auth/userinfo.profile",
                 "openid",
             ],
         )
