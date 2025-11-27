@@ -30,6 +30,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from pydantic import BaseModel
 from uuid import UUID
@@ -203,8 +205,8 @@ async def fix_request_scheme(request: Request, call_next):
 
 # CORS – allow frontend (local and production)
 frontend_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
     "https://crm-kappa-pied.vercel.app",  # Production frontend
 ]
 
@@ -242,13 +244,13 @@ oauth = OAuth()
 
 # Only register OAuth if credentials are provided
 if GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
-    oauth.register(
-        name="google",
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET,
-        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid email profile"},
-    )
+oauth.register(
+    name="google",
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
 else:
     print("⚠️  WARNING: Google OAuth not configured. GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing.")
 
@@ -573,7 +575,7 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
             # This bypasses authlib's URL construction that causes "Request URL missing protocol" error
             try:
                 print(f"🔍 Attempting token exchange with authlib (scheme: {final_scheme})...")
-                token = await oauth.google.authorize_access_token(request)
+        token = await oauth.google.authorize_access_token(request)
                 print(f"✅ Successfully obtained access token via authlib")
             except Exception as authlib_error:
                 error_msg = str(authlib_error)
@@ -627,8 +629,8 @@ async def auth_google_callback(request: Request, db: Session = Depends(get_db)):
             user_info = userinfo_response.json()
         else:
             # authlib was used - use authlib's method
-            resp = await oauth.google.get("userinfo", token=token)
-            user_info = resp.json()
+        resp = await oauth.google.get("userinfo", token=token)
+        user_info = resp.json()
         print(f"✅ User info received: {user_info.get('email', 'No email')}")
         
         if not user_info or "email" not in user_info:
@@ -742,6 +744,7 @@ def gmail_auth_start(request: Request):
         scopes=[
             "https://www.googleapis.com/auth/gmail.send",
             "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/userinfo.profile",
             "openid",
         ],
     )
@@ -775,8 +778,8 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
             FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error={error}")
         
-        code = request.query_params.get("code")
-        if not code:
+    code = request.query_params.get("code")
+    if not code:
             print("❌ No authorization code received from Google")
             FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=no_code")
@@ -802,29 +805,30 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
         print(f"🔧 Gmail OAuth callback redirect URI: {redirect_uri}")
         
         # Create OAuth flow
-        flow = Flow.from_client_config(
-            {
-                "web": {
-                    "client_id": GOOGLE_CLIENT_ID,
-                    "client_secret": GOOGLE_CLIENT_SECRET,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
                     "redirect_uris": [redirect_uri],
-                }
-            },
-            scopes=[
-                "https://www.googleapis.com/auth/gmail.send",
-                "https://www.googleapis.com/auth/userinfo.email",
-                "openid",
-            ],
-        )
+            }
+        },
+        scopes=[
+            "https://www.googleapis.com/auth/gmail.send",
+            "https://www.googleapis.com/auth/userinfo.email",
+                "https://www.googleapis.com/auth/userinfo.profile",
+            "openid",
+        ],
+    )
         flow.redirect_uri = redirect_uri
         
         # Exchange code for token
         print(f"🔍 Exchanging authorization code for access token...")
         try:
-            flow.fetch_token(code=code)
-            creds = flow.credentials
+    flow.fetch_token(code=code)
+    creds = flow.credentials
             print(f"✅ Successfully obtained Gmail access token")
         except Exception as token_error:
             error_msg = str(token_error)
@@ -836,12 +840,12 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
             FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=token_exchange_failed")
 
-        # Get user email from Google
+    # Get user email from Google
         print(f"🔍 Fetching user info from Google...")
         try:
-            oauth2_service = build("oauth2", "v2", credentials=creds)
-            userinfo = oauth2_service.userinfo().get().execute()
-            user_email = userinfo.get("email")
+    oauth2_service = build("oauth2", "v2", credentials=creds)
+    userinfo = oauth2_service.userinfo().get().execute()
+    user_email = userinfo.get("email")
             print(f"✅ User email retrieved: {user_email}")
         except Exception as userinfo_error:
             error_msg = str(userinfo_error)
@@ -859,8 +863,8 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=no_email")
 
         # Find user in database
-        user = db.query(User).filter(User.email == user_email).first()
-        if not user:
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
             print(f"❌ User not found in CRM: {user_email}")
             FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
             return RedirectResponse(url=f"{FRONTEND_URL}/ai-outreach?gmail_error=user_not_found")
@@ -868,9 +872,9 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
         # Save Gmail tokens
         print(f"🔍 Saving Gmail tokens for user: {user_email}")
         try:
-            user.gmail_access_token = creds.token
-            user.gmail_refresh_token = creds.refresh_token
-            db.commit()
+    user.gmail_access_token = creds.token
+    user.gmail_refresh_token = creds.refresh_token
+    db.commit()
             print(f"✅ Gmail tokens saved successfully")
         except Exception as db_error:
             error_msg = str(db_error)
@@ -1797,6 +1801,23 @@ def send_gmail(payload: dict, db: Session = Depends(get_db)):
     )
 
     try:
+        # Refresh token if needed
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(GoogleAuthRequest())
+                user.gmail_access_token = creds.token
+                # Google sometimes returns a new refresh token
+                if creds.refresh_token and creds.refresh_token != user.gmail_refresh_token:
+                    user.gmail_refresh_token = creds.refresh_token
+                db.commit()
+            except Exception as refresh_error:
+                db.rollback()
+                print(f"❌ Gmail token refresh failed for {user_email}: {refresh_error}")
+                raise HTTPException(
+                    401,
+                    "Gmail session expired. Please reconnect your Gmail account.",
+                ) from refresh_error
+
         service = build("gmail", "v1", credentials=creds)
         message = MIMEText(payload["body"])
         message["to"] = payload["to"]
@@ -1805,5 +1826,14 @@ def send_gmail(payload: dict, db: Session = Depends(get_db)):
         raw = {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
         service.users().messages().send(userId="me", body=raw).execute()
         return {"message": f"Email sent via {user_email}"}
+    except HttpError as gmail_error:
+        error_reason = getattr(gmail_error, "error_details", gmail_error)
+        print(f"❌ Gmail API error for {user_email}: {error_reason}")
+        raise HTTPException(
+            status_code=gmail_error.resp.status if gmail_error.resp else 500,
+            detail="Gmail API error: "
+            + (gmail_error.error_details[0]["message"] if getattr(gmail_error, "error_details", None) else str(gmail_error)),
+        )
     except Exception as e:
+        print(f"❌ Unexpected Gmail send failure for {user_email}: {e}")
         raise HTTPException(500, detail=str(e))
