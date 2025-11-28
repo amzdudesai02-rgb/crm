@@ -14,6 +14,7 @@ export default function AIOutreach() {
   const [generated, setGenerated] = useState({ subject: "", body: "" });
   const [recipient, setRecipient] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
+  const [sending, setSending] = useState(false);
 
   // -------------------- Fetch Templates + User --------------------
   useEffect(() => {
@@ -103,14 +104,18 @@ export default function AIOutreach() {
     }
 
     try {
+      setSending(true);
+      toast.loading("Email Generating...", { id: "email-generating" });
       await api.post("/email/send_gmail", {
         to: recipient,
         subject: generated.subject,
         body: generated.body,
         user_email: currentUser.email, // logged-in user's Gmail ID
       });
+      toast.dismiss("email-generating");
       toast.success(`Email sent via ${currentUser.email} 🎉`);
     } catch (err) {
+      toast.dismiss("email-generating");
       if (err.response?.status === 401) {
         toast("Please connect your Gmail account first", {
           icon: "📧",
@@ -119,6 +124,9 @@ export default function AIOutreach() {
       } else {
         toast.error("Failed to send email");
       }
+    }
+    finally {
+      setSending(false);
     }
   };
 
@@ -235,9 +243,15 @@ export default function AIOutreach() {
             <div className="flex justify-end pt-3">
               <button
                 onClick={handleSend}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg"
+                disabled={sending}
+                className={`bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 ${
+                  sending ? "opacity-70 cursor-not-allowed" : ""
+                }`}
               >
-                Send Email
+                {sending && (
+                  <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                )}
+                {sending ? "Email Generating..." : "Send Email"}
               </button>
             </div>
           </div>
