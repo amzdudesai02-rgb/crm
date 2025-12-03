@@ -146,31 +146,51 @@ export default function AIOutreach() {
 
   // -------------------- UI --------------------
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <AppHeader />
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="bg-white shadow-lg rounded-2xl p-6 space-y-6">
-          <h1 className="text-xl font-semibold">AI Outreach & Email Sender</h1>
-
-          {/* Gmail Connect + context */}
-          <div className="flex justify-between items-center">
-            {currentUser && (
-              <p className="text-sm text-gray-500">
-                Logged in as: <b>{currentUser.email}</b>
-              </p>
-            )}
-            <button
-              onClick={handleConnectGmail}
-              className="border px-3 py-1 rounded-lg text-sm bg-white hover:bg-gray-100"
-            >
-              Connect Gmail
-            </button>
+      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+        {/* Hero / context */}
+        <section className="rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 text-white p-6 shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-white/60">
+              AI Outreach
+            </p>
+            <h1 className="mt-2 text-2xl md:text-3xl font-semibold">
+              Turn pipeline into warm conversations.
+            </h1>
+            <p className="mt-2 text-sm text-white/70 max-w-xl">
+              Pick a deal and contact, drop in a template, and let AI draft a
+              first pass that still sounds like you.
+            </p>
           </div>
+          <div className="bg-white/10 border border-white/15 rounded-2xl px-4 py-3 text-xs space-y-1 min-w-[220px]">
+            <p className="text-white/70 flex items-center justify-between gap-2">
+              <span className="uppercase tracking-[0.25em] text-[10px]">
+                Gmail
+              </span>
+              <button
+                onClick={handleConnectGmail}
+                className="px-3 py-1 rounded-full bg-white text-slate-900 text-[11px] font-medium hover:bg-slate-100 transition"
+              >
+                Connect Gmail
+              </button>
+            </p>
+            <p className="text-white/80 truncate">
+              {currentUser
+                ? `Logged in as ${currentUser.email}`
+                : "Connect your Google account to send from your inbox."}
+            </p>
+          </div>
+        </section>
 
+        {/* Main composer card */}
+        <section className="bg-white shadow-sm rounded-3xl border border-gray-100 p-6 space-y-6">
           {/* Smart selection: deal + contact */}
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Pick deal (optional)</label>
+              <label className="text-sm font-medium text-gray-800">
+                Pick deal <span className="text-gray-400">(optional)</span>
+              </label>
               <select
                 value={selectedDealId}
                 onChange={(e) => {
@@ -185,7 +205,7 @@ export default function AIOutreach() {
                     }));
                   }
                 }}
-                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm"
+                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
               >
                 <option value="">Select a deal</option>
                 {deals.map((deal) => (
@@ -194,10 +214,15 @@ export default function AIOutreach() {
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Use deals from your pipeline to auto-fill brand and category.
+              </p>
             </div>
 
             <div>
-              <label className="text-sm font-medium">Pick contact (fills To + name)</label>
+              <label className="text-sm font-medium text-gray-800">
+                Pick contact <span className="text-gray-400">(fills To + name)</span>
+              </label>
               <select
                 value={selectedContactId}
                 onChange={(e) => {
@@ -213,7 +238,7 @@ export default function AIOutreach() {
                     }));
                   }
                 }}
-                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm"
+                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
               >
                 <option value="">Select a contact</option>
                 {contacts.map((c) => (
@@ -222,16 +247,22 @@ export default function AIOutreach() {
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Contacts come from your CRM; choosing one will set the To line
+                and greeting.
+              </p>
             </div>
           </div>
 
           {/* Template Selector */}
-          <div>
-            <label className="text-sm font-medium">Choose Template</label>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-800">
+              Choose template
+            </label>
             <select
               value={selectedTemplate}
               onChange={(e) => setSelectedTemplate(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 mt-1"
+              className="w-full border rounded-lg px-3 py-2 mt-1 bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
             >
               <option value="">Select a template</option>
               {templates.map((t) => (
@@ -240,6 +271,9 @@ export default function AIOutreach() {
                 </option>
               ))}
             </select>
+            <p className="text-xs text-gray-500">
+              Templates live in Settings → Templates. Variables below will be merged into the copy.
+            </p>
           </div>
 
           {/* Variables */}
@@ -251,7 +285,7 @@ export default function AIOutreach() {
               onChange={(e) =>
                 setVariables({ ...variables, first_name: e.target.value })
               }
-              className="border rounded-lg px-3 py-2"
+              className="border rounded-lg px-3 py-2 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
             />
             <input
               type="text"
@@ -260,7 +294,7 @@ export default function AIOutreach() {
               onChange={(e) =>
                 setVariables({ ...variables, brand_name: e.target.value })
               }
-              className="border rounded-lg px-3 py-2"
+              className="border rounded-lg px-3 py-2 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
             />
             <input
               type="text"
@@ -269,28 +303,33 @@ export default function AIOutreach() {
               onChange={(e) =>
                 setVariables({ ...variables, category: e.target.value })
               }
-              className="border rounded-lg px-3 py-2"
+              className="border rounded-lg px-3 py-2 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
             />
           </div>
 
           {/* Generate Button */}
-          <button
-            onClick={handleGenerate}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-          >
-            Generate Email
-          </button>
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-xs text-gray-500">
+              You can tweak variables first, then generate and fully edit the draft before sending.
+            </p>
+            <button
+              onClick={handleGenerate}
+              className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm hover:bg-blue-700 transition"
+            >
+              <span>Generate Email</span>
+            </button>
+          </div>
 
           {/* AI Generated Preview */}
           {generated.body && (
-            <div className="border-t pt-4">
-              <label className="text-sm font-medium">To:</label>
+            <div className="border-t pt-5 space-y-3">
+              <label className="text-sm font-medium text-gray-800">Preview & send</label>
               <input
                 type="email"
                 placeholder="recipient@example.com"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 mb-3"
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
               />
 
               <div className="space-y-2">
@@ -300,7 +339,7 @@ export default function AIOutreach() {
                   onChange={(e) =>
                     setGenerated({ ...generated, subject: e.target.value })
                   }
-                  className="w-full border rounded-lg px-3 py-2 font-medium"
+                  className="w-full border rounded-lg px-3 py-2 text-sm font-medium bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
                 />
                 <textarea
                   rows={8}
@@ -308,7 +347,7 @@ export default function AIOutreach() {
                   onChange={(e) =>
                     setGenerated({ ...generated, body: e.target.value })
                   }
-                  className="w-full border rounded-lg px-3 py-2"
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-none"
                 />
               </div>
 
