@@ -12,7 +12,6 @@ const statusColors = {
 };
 
 export default function Operations() {
-  const token = localStorage.getItem("token");
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [shipments, setShipments] = useState([]);
@@ -31,8 +30,6 @@ export default function Operations() {
   const [savingCosts, setSavingCosts] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
-
     const loadData = async () => {
       try {
         const [ordersRes, shipmentsRes, invoicesRes] = await Promise.all([
@@ -49,12 +46,7 @@ export default function Operations() {
     };
 
     loadData();
-  }, [token]);
-
-  if (!token) {
-    window.location.href = "/login";
-    return null;
-  }
+  }, []);
 
   if (loading) {
     return (

@@ -4,14 +4,12 @@ import AppHeader from "./components/AppHeader";
 import api from "./api";
 
 export default function Intelligence() {
-  const token = localStorage.getItem("token");
   const [loading, setLoading] = useState(true);
   const [deals, setDeals] = useState([]);
   const [orders, setOrders] = useState([]);
   const [profit, setProfit] = useState({ total_revenue: 0, total_expense: 0, profit: 0 });
 
   useEffect(() => {
-    if (!token) return;
     const load = async () => {
       try {
         const [dealsRes, ordersRes, profitRes] = await Promise.all([
@@ -28,12 +26,7 @@ export default function Intelligence() {
     };
 
     load();
-  }, [token]);
-
-  if (!token) {
-    window.location.href = "/login";
-    return null;
-  }
+  }, []);
 
   if (loading) {
     return (
