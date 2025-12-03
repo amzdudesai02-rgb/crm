@@ -56,13 +56,10 @@ export default function Intelligence() {
   const avgMargin =
     marginByOrder.reduce((sum, item) => sum + item.margin, 0) / (marginByOrder.length || 1);
 
-  const nearDueDeals = useMemo(
-    () =>
-      deals
-        .filter((deal) => deal.due_date && dayjs(deal.due_date).diff(dayjs(), "day") <= 7)
-        .slice(0, 3),
-    [deals]
-  );
+  // simple derived value; no need for a hook here (avoids hook-order issues)
+  const nearDueDeals = deals
+    .filter((deal) => deal.due_date && dayjs(deal.due_date).diff(dayjs(), "day") <= 7)
+    .slice(0, 3);
 
   const openPOs = orders.filter((o) => o.status !== "closed");
   const capitalTied =
