@@ -6,6 +6,10 @@ import AppHeader from "./components/AppHeader";
 export default function AIOutreach() {
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState("");
+  const [deals, setDeals] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [selectedDealId, setSelectedDealId] = useState("");
+  const [selectedContactId, setSelectedContactId] = useState("");
   const [variables, setVariables] = useState({
     first_name: "",
     brand_name: "",
@@ -19,6 +23,16 @@ export default function AIOutreach() {
   // -------------------- Fetch Templates + User --------------------
   useEffect(() => {
     api.get("/templates").then((res) => setTemplates(res.data));
+
+    // pull deals + contacts so you can pick targets instead of typing everything
+    Promise.all([
+      api.get("/pipeline/deals").catch(() => ({ data: [] })),
+      api.get("/contacts").catch(() => ({ data: [] })),
+    ]).then(([dealsRes, contactsRes]) => {
+      setDeals(dealsRes.data || []);
+      setContacts(contactsRes.data || []);
+    });
+
     api
       .get("/users/me")
       .then((res) => setCurrentUser(res.data))
@@ -136,126 +150,184 @@ export default function AIOutreach() {
       <AppHeader />
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="bg-white shadow-lg rounded-2xl p-6 space-y-6">
-        <h1 className="text-xl font-semibold">AI Outreach & Email Sender</h1>
+          <h1 className="text-xl font-semibold">AI Outreach & Email Sender</h1>
 
-        {/* Gmail Connect Button */}
-        <div className="flex justify-between items-center">
-          {currentUser && (
-            <p className="text-sm text-gray-500">
-              Logged in as: <b>{currentUser.email}</b>
-            </p>
-          )}
-          <button
-            onClick={handleConnectGmail}
-            className="border px-3 py-1 rounded-lg text-sm bg-white hover:bg-gray-100"
-          >
-            Connect Gmail
-          </button>
-        </div>
+          {/* Gmail Connect + context */}
+          <div className="flex justify-between items-center">
+            {currentUser && (
+              <p className="text-sm text-gray-500">
+                Logged in as: <b>{currentUser.email}</b>
+              </p>
+            )}
+            <button
+              onClick={handleConnectGmail}
+              className="border px-3 py-1 rounded-lg text-sm bg-white hover:bg-gray-100"
+            >
+              Connect Gmail
+            </button>
+          </div>
 
-        {/* Template Selector */}
-        <div>
-          <label className="text-sm font-medium">Choose Template</label>
-          <select
-            value={selectedTemplate}
-            onChange={(e) => setSelectedTemplate(e.target.value)}
-            className="w-full border rounded-lg px-3 py-2 mt-1"
-          >
-            <option value="">Select a template</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Variables */}
-        <div className="grid md:grid-cols-3 gap-3">
-          <input
-            type="text"
-            placeholder="First Name"
-            value={variables.first_name}
-            onChange={(e) =>
-              setVariables({ ...variables, first_name: e.target.value })
-            }
-            className="border rounded-lg px-3 py-2"
-          />
-          <input
-            type="text"
-            placeholder="Brand Name"
-            value={variables.brand_name}
-            onChange={(e) =>
-              setVariables({ ...variables, brand_name: e.target.value })
-            }
-            className="border rounded-lg px-3 py-2"
-          />
-          <input
-            type="text"
-            placeholder="Category"
-            value={variables.category}
-            onChange={(e) =>
-              setVariables({ ...variables, category: e.target.value })
-            }
-            className="border rounded-lg px-3 py-2"
-          />
-        </div>
-
-        {/* Generate Button */}
-        <button
-          onClick={handleGenerate}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-        >
-          Generate Email
-        </button>
-
-        {/* AI Generated Preview */}
-        {generated.body && (
-          <div className="border-t pt-4">
-            <label className="text-sm font-medium">To:</label>
-            <input
-              type="email"
-              placeholder="recipient@example.com"
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 mb-3"
-            />
-
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={generated.subject}
-                onChange={(e) =>
-                  setGenerated({ ...generated, subject: e.target.value })
-                }
-                className="w-full border rounded-lg px-3 py-2 font-medium"
-              />
-              <textarea
-                rows={8}
-                value={generated.body}
-                onChange={(e) =>
-                  setGenerated({ ...generated, body: e.target.value })
-                }
-                className="w-full border rounded-lg px-3 py-2"
-              />
+          {/* Smart selection: deal + contact */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Pick deal (optional)</label>
+              <select
+                value={selectedDealId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedDealId(id);
+                  const deal = deals.find((d) => String(d.id) === id);
+                  if (deal) {
+                    setVariables((prev) => ({
+                      ...prev,
+                      brand_name: deal.company?.name || prev.brand_name,
+                      category: deal.category || prev.category,
+                    }));
+                  }
+                }}
+                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm"
+              >
+                <option value="">Select a deal</option>
+                {deals.map((deal) => (
+                  <option key={deal.id} value={deal.id}>
+                    {deal.title} · ${Number(deal.value || 0).toLocaleString()}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="flex justify-end pt-3">
-              <button
-                onClick={handleSend}
-                disabled={sending}
-                className={`bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 ${
-                  sending ? "opacity-70 cursor-not-allowed" : ""
-                }`}
+            <div>
+              <label className="text-sm font-medium">Pick contact (fills To + name)</label>
+              <select
+                value={selectedContactId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedContactId(id);
+                  const contact = contacts.find((c) => String(c.id) === id);
+                  if (contact) {
+                    const firstName = (contact.name || "").split(" ")[0];
+                    setRecipient(contact.email || "");
+                    setVariables((prev) => ({
+                      ...prev,
+                      first_name: firstName || prev.first_name,
+                    }));
+                  }
+                }}
+                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm"
               >
-                {sending && (
-                  <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
-                )}
-                {sending ? "Email Generating..." : "Send Email"}
-              </button>
+                <option value="">Select a contact</option>
+                {contacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} · {c.email}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-        )}
+
+          {/* Template Selector */}
+          <div>
+            <label className="text-sm font-medium">Choose Template</label>
+            <select
+              value={selectedTemplate}
+              onChange={(e) => setSelectedTemplate(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 mt-1"
+            >
+              <option value="">Select a template</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Variables */}
+          <div className="grid md:grid-cols-3 gap-3">
+            <input
+              type="text"
+              placeholder="First Name"
+              value={variables.first_name}
+              onChange={(e) =>
+                setVariables({ ...variables, first_name: e.target.value })
+              }
+              className="border rounded-lg px-3 py-2"
+            />
+            <input
+              type="text"
+              placeholder="Brand Name"
+              value={variables.brand_name}
+              onChange={(e) =>
+                setVariables({ ...variables, brand_name: e.target.value })
+              }
+              className="border rounded-lg px-3 py-2"
+            />
+            <input
+              type="text"
+              placeholder="Category"
+              value={variables.category}
+              onChange={(e) =>
+                setVariables({ ...variables, category: e.target.value })
+              }
+              className="border rounded-lg px-3 py-2"
+            />
+          </div>
+
+          {/* Generate Button */}
+          <button
+            onClick={handleGenerate}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg"
+          >
+            Generate Email
+          </button>
+
+          {/* AI Generated Preview */}
+          {generated.body && (
+            <div className="border-t pt-4">
+              <label className="text-sm font-medium">To:</label>
+              <input
+                type="email"
+                placeholder="recipient@example.com"
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 mb-3"
+              />
+
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={generated.subject}
+                  onChange={(e) =>
+                    setGenerated({ ...generated, subject: e.target.value })
+                  }
+                  className="w-full border rounded-lg px-3 py-2 font-medium"
+                />
+                <textarea
+                  rows={8}
+                  value={generated.body}
+                  onChange={(e) =>
+                    setGenerated({ ...generated, body: e.target.value })
+                  }
+                  className="w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div className="flex justify-end pt-3">
+                <button
+                  onClick={handleSend}
+                  disabled={sending}
+                  className={`bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 ${
+                    sending ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {sending && (
+                    <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {sending ? "Email Generating..." : "Send Email"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

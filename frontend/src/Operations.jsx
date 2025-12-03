@@ -18,6 +18,18 @@ export default function Operations() {
   const [shipments, setShipments] = useState([]);
   const [invoices, setInvoices] = useState([]);
 
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [costForm, setCostForm] = useState({
+    units_total: "",
+    cogs_total: "",
+    freight_cost: "",
+    customs_cost: "",
+    fba_fees: "",
+    other_costs: "",
+  });
+  const [savingCosts, setSavingCosts] = useState(false);
+
   useEffect(() => {
     if (!token) return;
 
@@ -60,6 +72,49 @@ export default function Operations() {
     status,
     items: orders.filter((po) => po.status === status || (!po.status && status === "draft")),
   }));
+
+  const openOrderDetail = (order) => {
+    setSelectedOrder(order);
+    setCostForm({
+      units_total: order.units_total ?? "",
+      cogs_total: order.cogs_total ?? "",
+      freight_cost: order.freight_cost ?? "",
+      customs_cost: order.customs_cost ?? "",
+      fba_fees: order.fba_fees ?? "",
+      other_costs: order.other_costs ?? "",
+    });
+    setShowOrderModal(true);
+  };
+
+  const refreshOrders = async () => {
+    try {
+      const res = await api.get("/orders").catch(() => ({ data: [] }));
+      setOrders(res.data || []);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSaveCosts = async () => {
+    if (!selectedOrder) return;
+    setSavingCosts(true);
+    try {
+      await api.put(`/orders/${selectedOrder.id}/costs`, {
+        units_total: costForm.units_total === "" ? null : Number(costForm.units_total),
+        cogs_total: costForm.cogs_total === "" ? null : Number(costForm.cogs_total),
+        freight_cost: costForm.freight_cost === "" ? null : Number(costForm.freight_cost),
+        customs_cost: costForm.customs_cost === "" ? null : Number(costForm.customs_cost),
+        fba_fees: costForm.fba_fees === "" ? null : Number(costForm.fba_fees),
+        other_costs: costForm.other_costs === "" ? null : Number(costForm.other_costs),
+      });
+      await refreshOrders();
+      setShowOrderModal(false);
+    } catch {
+      // TODO: surface error once global toast system is wired here
+    } finally {
+      setSavingCosts(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -118,13 +173,18 @@ export default function Operations() {
                 <div className="space-y-3">
                   {group.items.length ? (
                     group.items.slice(0, 4).map((po) => (
-                      <div key={po.id} className="rounded-xl bg-white border border-gray-100 p-3">
+                      <button
+                        key={po.id}
+                        type="button"
+                        onClick={() => openOrderDetail(po)}
+                        className="w-full text-left rounded-xl bg-white border border-gray-100 p-3 hover:border-slate-300 hover:shadow-sm transition"
+                      >
                         <p className="font-medium text-gray-900">{po.reference || "PO"}</p>
                         <p className="text-sm text-gray-500">{po.company?.name || "Brand"}</p>
                         <p className="text-xs text-gray-400 mt-1">
                           ETA {po.expected_arrival_date ? dayjs(po.expected_arrival_date).format("MMM D") : "TBD"}
                         </p>
-                      </div>
+                      </button>
                     ))
                   ) : (
                     <p className="text-xs text-gray-400">No records yet</p>
@@ -212,6 +272,196 @@ export default function Operations() {
           </div>
         </section>
       </div>
+      {showOrderModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Purchase Order</p>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  {selectedOrder.reference || "Draft PO"} · {selectedOrder.company?.name || "Brand"}
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  Created {selectedOrder.order_date ? dayjs(selectedOrder.order_date).format("MMM D, YYYY") : "TBD"} ·{" "}
+                  Status:{" "}
+                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 capitalize">
+                    {selectedOrder.status || "draft"}
+                  </span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOrderModal(false)}
+                className="text-xs text-gray-500 hover:text-gray-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-[1.1fr_0.9fr] gap-6">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-100 p-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.25em] mb-2">
+                    Cost Inputs
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-gray-600">Units</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={costForm.units_total}
+                        onChange={(e) =>
+                          setCostForm({ ...costForm, units_total: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-600">COGS total ($)</label>
+                      <input
+                        type="number"
+                        value={costForm.cogs_total}
+                        onChange={(e) =>
+                          setCostForm({ ...costForm, cogs_total: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-600">Freight ($)</label>
+                      <input
+                        type="number"
+                        value={costForm.freight_cost}
+                        onChange={(e) =>
+                          setCostForm({ ...costForm, freight_cost: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-600">Customs ($)</label>
+                      <input
+                        type="number"
+                        value={costForm.customs_cost}
+                        onChange={(e) =>
+                          setCostForm({ ...costForm, customs_cost: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-600">FBA fees ($)</label>
+                      <input
+                        type="number"
+                        value={costForm.fba_fees}
+                        onChange={(e) =>
+                          setCostForm({ ...costForm, fba_fees: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-600">Other costs ($)</label>
+                      <input
+                        type="number"
+                        value={costForm.other_costs}
+                        onChange={(e) =>
+                          setCostForm({ ...costForm, other_costs: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-lg border px-2 py-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end mt-4">
+                    <button
+                      type="button"
+                      onClick={handleSaveCosts}
+                      disabled={savingCosts}
+                      className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm disabled:opacity-60"
+                    >
+                      {savingCosts ? "Saving..." : "Save cost changes"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-100 p-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.25em] mb-2">
+                    Landed Cost & Margin
+                  </p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Total landed cost</span>
+                      <span className="font-semibold text-gray-900">
+                        $
+                        {Number(selectedOrder.total_amount || 0).toLocaleString(undefined, {
+                          maximumFractionDigits: 0,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Landed cost / unit</span>
+                      <span className="font-semibold text-gray-900">
+                        $
+                        {Number(
+                          selectedOrder.landed_cost_per_unit || 0
+                        ).toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Expected margin</span>
+                      <span className="font-semibold text-emerald-700">
+                        {Number(
+                          selectedOrder.expected_margin_percent || 0
+                        ).toLocaleString(undefined, {
+                          maximumFractionDigits: 1,
+                        })}
+                        %
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-100 p-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-[0.25em] mb-2">
+                    Dates
+                  </p>
+                  <dl className="space-y-1 text-xs text-gray-600">
+                    <div className="flex justify-between">
+                      <dt>Order date</dt>
+                      <dd>
+                        {selectedOrder.order_date
+                          ? dayjs(selectedOrder.order_date).format("MMM D, YYYY")
+                          : "TBD"}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt>Expected ship</dt>
+                      <dd>
+                        {selectedOrder.expected_ship_date
+                          ? dayjs(selectedOrder.expected_ship_date).format("MMM D, YYYY")
+                          : "TBD"}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt>Expected arrival</dt>
+                      <dd>
+                        {selectedOrder.expected_arrival_date
+                          ? dayjs(selectedOrder.expected_arrival_date).format("MMM D, YYYY")
+                          : "TBD"}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

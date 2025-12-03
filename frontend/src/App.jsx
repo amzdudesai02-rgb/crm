@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Home from "./Home";
 import Login from "./Login";
@@ -37,12 +37,81 @@ function OAuthTokenHandler() {
   return null; // This component doesn't render anything
 }
 
+// Global keyboard listener for Cmd/Ctrl+K
+function CommandPaletteKeyListener({ onOpen }) {
+  useEffect(() => {
+    const handler = (e) => {
+      const isMac = navigator.platform.toLowerCase().includes("mac");
+      if ((isMac ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        onOpen();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onOpen]);
+  return null;
+}
+
+function CommandPalette({ open, onClose }) {
+  const navigate = useNavigate();
+
+  if (!open) return null;
+
+  const actions = [
+    { label: "Go to Dashboard", path: "/dashboard" },
+    { label: "Open Pipeline", path: "/pipeline" },
+    { label: "Open AI Outreach", path: "/ai-outreach" },
+    { label: "Open Operations", path: "/operations" },
+    { label: "Open Intelligence", path: "/intelligence" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center pt-24">
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+        <div className="border-b border-gray-100 px-4 py-2">
+          <input
+            autoFocus
+            placeholder="Jump to anywhere… (Dashboard, Pipeline, Outreach)"
+            className="w-full border-none outline-none text-sm py-1"
+          />
+        </div>
+        <div className="max-h-64 overflow-y-auto">
+          {actions.map((action) => (
+            <button
+              key={action.path}
+              type="button"
+              onClick={() => {
+                navigate(action.path);
+                onClose();
+              }}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+        <div className="border-t border-gray-100 px-4 py-1 text-[11px] text-gray-400 flex justify-between">
+          <span>Use Cmd/Ctrl + K to open</span>
+          <button type="button" onClick={onClose}>
+            Esc
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const token = localStorage.getItem("token");
+  const [commandOpen, setCommandOpen] = useState(false);
 
   return (
     <Router>
       <OAuthTokenHandler />
+      {/* Simple command palette (Cmd/Ctrl+K) */}
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
+      <CommandPaletteKeyListener onOpen={() => setCommandOpen(true)} />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />

@@ -71,6 +71,13 @@ export default function Intelligence() {
     [deals]
   );
 
+  const openPOs = orders.filter((o) => o.status !== "closed");
+  const capitalTied =
+    openPOs.reduce((sum, o) => sum + Number(o.total_amount || 0), 0) ?? 0;
+  const shipmentsInTransit = orders.filter(
+    (o) => o.status === "in_transit" || o.status === "confirmed"
+  ).length;
+
   return (
     <div className="min-h-screen bg-slate-50">
       <AppHeader />
@@ -111,7 +118,11 @@ export default function Intelligence() {
               .toLocaleString()}`}
             detail="Total expected revenue"
           />
-          <InsightCard title="Near-due deals" value={nearDueDeals.length} detail="Need love this week" />
+          <InsightCard
+            title="Capital in open POs"
+            value={`$${capitalTied.toLocaleString()}`}
+            detail="Cash committed but not realized"
+          />
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">

@@ -19,56 +19,56 @@ export default function Dashboard() {
   const [reminders, setReminders] = useState([]);
   const [operations, setOperations] = useState({ orders: [], shipments: [], invoices: [] });
   const [aiQueue, setAiQueue] = useState([]);
+  const [onboardingSteps, setOnboardingSteps] = useState([
+    { id: "company", label: "Add your first brand/supplier company", done: false },
+    { id: "deal", label: "Create a first deal in the pipeline", done: false },
+    { id: "gmail", label: "Connect Gmail and send 1 email", done: false },
+    { id: "po", label: "Draft a purchase order from a deal", done: false },
+  ]);
 
   useEffect(() => {
     if (!token) return;
 
+    // ⚡ First: fetch lightweight, user-facing data so the top of dashboard feels instant
     Promise.all([
       api.get("/pipeline/deals").catch(() => ({ data: [] })),
       api.get("/contacts").catch(() => ({ data: [] })),
       api.get("/companies").catch(() => ({ data: [] })),
-      api.get("/profit").catch(() => ({ data: { total_revenue: 0, total_expense: 0 } })),
       api.get("/reminders").catch(() => ({ data: [] })),
+    ]).then(([dealsRes, contactsRes, companiesRes, remindersRes]) => {
+      const deals = dealsRes.data || [];
+      const contacts = contactsRes.data || [];
+      const companies = companiesRes.data || [];
+      const totalRevenue = deals.reduce((sum, deal) => sum + (Number(deal.value) || 0), 0);
+
+      setStats({
+        deals: deals.length,
+        contacts: contacts.length,
+        companies: companies.length,
+        revenue: totalRevenue,
+      });
+
+      setRecentDeals(deals.slice(0, 5));
+      setRecentContacts(contacts.slice(0, 5));
+      setReminders((remindersRes.data || []).slice(0, 4));
+
+      const outreachCandidates = deals
+        .filter((deal) => !deal.last_email_sent_at)
+        .slice(0, 3);
+      setAiQueue(outreachCandidates);
+    });
+
+    // 🛰 Then: load heavier operations/intelligence data in the background
+    Promise.all([
       api.get("/orders").catch(() => ({ data: [] })),
       api.get("/shipments").catch(() => ({ data: [] })),
       api.get("/invoices").catch(() => ({ data: [] })),
-    ]).then(
-      ([
-        dealsRes,
-        contactsRes,
-        companiesRes,
-        profitRes,
-        remindersRes,
-        ordersRes,
-        shipmentsRes,
-        invoicesRes,
-      ]) => {
-        const deals = dealsRes.data || [];
-        const contacts = contactsRes.data || [];
-        const companies = companiesRes.data || [];
-        const totalRevenue = deals.reduce((sum, deal) => sum + (Number(deal.value) || 0), 0);
-        const orders = ordersRes.data || [];
-        const shipments = shipmentsRes.data || [];
-        const invoices = invoicesRes.data || [];
-
-        setStats({
-          deals: deals.length,
-          contacts: contacts.length,
-          companies: companies.length,
-          revenue: totalRevenue,
-        });
-
-        setRecentDeals(deals.slice(0, 5));
-        setRecentContacts(contacts.slice(0, 5));
-        setReminders((remindersRes.data || []).slice(0, 4));
-        setOperations({ orders, shipments, invoices });
-
-        const outreachCandidates = deals
-          .filter((deal) => !deal.last_email_sent_at)
-          .slice(0, 3);
-        setAiQueue(outreachCandidates);
-      }
-    );
+    ]).then(([ordersRes, shipmentsRes, invoicesRes]) => {
+      const orders = ordersRes.data || [];
+      const shipments = shipmentsRes.data || [];
+      const invoices = invoicesRes.data || [];
+      setOperations({ orders, shipments, invoices });
+    });
   }, [token]);
 
   if (!token) return <Navigate to="/login" replace />;
@@ -180,6 +180,40 @@ export default function Dashboard() {
                     No reminders yet — create one from any deal.
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Onboarding checklist */}
+            <div className="rounded-3xl bg-white p-6 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Getting set up</h2>
+                <span className="text-xs text-gray-400">
+                  {onboardingSteps.filter((s) => s.done).length}/{onboardingSteps.length} completed
+                </span>
+              </div>
+              <div className="space-y-3">
+                {onboardingSteps.map((step) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    className={`w-full flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm ${
+                      step.done
+                        ? "bg-emerald-50 border-emerald-100 text-emerald-800"
+                        : "bg-white border-gray-100 hover:bg-gray-50"
+                    }`}
+                    onClick={() => {
+                      if (step.id === "company") setActiveTab("companies");
+                      if (step.id === "deal") navigate("/pipeline");
+                      if (step.id === "gmail") navigate("/ai-outreach");
+                      if (step.id === "po") navigate("/pipeline");
+                    }}
+                  >
+                    <span>{step.label}</span>
+                    <span className="text-xs uppercase tracking-[0.25em] text-gray-400">
+                      {step.done ? "Done" : "Start"}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
 
