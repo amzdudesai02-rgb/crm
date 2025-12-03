@@ -102,8 +102,16 @@ function CommandPalette({ open, onClose }) {
   );
 }
 
-function App() {
+// Simple auth gate that always reads latest token from localStorage
+function RequireAuth({ children }) {
   const token = localStorage.getItem("token");
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
+
+function App() {
   const [commandOpen, setCommandOpen] = useState(false);
 
   return (
@@ -120,27 +128,51 @@ function App() {
         <Route path="/auth/callback/google" element={<AuthCallback />} />
         <Route
           path="/dashboard"
-          element={token ? <Dashboard /> : <Navigate to="/login" replace />}
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
         />
         <Route
-           path="/profile"
-           element={token ? <Profile /> : <Navigate to="/login" replace />}
+          path="/profile"
+          element={
+            <RequireAuth>
+              <Profile />
+            </RequireAuth>
+          }
         />
         <Route
-           path="/pipeline"
-           element={token ? <Pipeline /> : <Navigate to="/login" replace />}
+          path="/pipeline"
+          element={
+            <RequireAuth>
+              <Pipeline />
+            </RequireAuth>
+          }
         />
         <Route
-           path="/ai-outreach"
-           element={token ? <AIOutreach /> : <Navigate to="/login" replace />}
+          path="/ai-outreach"
+          element={
+            <RequireAuth>
+              <AIOutreach />
+            </RequireAuth>
+          }
         />
         <Route
           path="/operations"
-          element={token ? <Operations /> : <Navigate to="/login" replace />}
+          element={
+            <RequireAuth>
+              <Operations />
+            </RequireAuth>
+          }
         />
         <Route
           path="/intelligence"
-          element={token ? <Intelligence /> : <Navigate to="/login" replace />}
+          element={
+            <RequireAuth>
+              <Intelligence />
+            </RequireAuth>
+          }
         />
       </Routes>
     </Router>
