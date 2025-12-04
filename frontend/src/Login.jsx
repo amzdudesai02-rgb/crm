@@ -40,12 +40,19 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4">
-      <div className="max-w-5xl w-full grid gap-10 md:grid-cols-[1.1fr_0.9fr] items-center">
+    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4 relative overflow-hidden">
+      {/* Background glow to match app theme */}
+      <div className="pointer-events-none absolute inset-0 opacity-60">
+        <div className="absolute -top-40 -left-32 h-80 w-80 rounded-full bg-blue-500/20 blur-3xl" />
+        <div className="absolute -bottom-40 -right-32 h-80 w-80 rounded-full bg-emerald-500/20 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_#020617,_#020617_45%,_#02061700)]" />
+      </div>
+
+      <div className="relative max-w-5xl w-full grid gap-10 md:grid-cols-[1.1fr_0.9fr] items-center">
         {/* Brand side */}
         <div className="hidden md:block">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-11 h-11 rounded-2xl bg-white text-slate-900 font-black grid place-items-center">
+            <div className="w-11 h-11 rounded-2xl bg-white text-slate-900 font-black grid place-items-center shadow-lg shadow-blue-500/40">
               LC
             </div>
             <div>
@@ -57,84 +64,89 @@ export default function Login() {
             Log back into your command center.
           </h1>
           <p className="mt-4 text-slate-300 text-sm md:text-base max-w-md">
-            Pick up where you left off – deals, outreach, and operations are exactly
-            where you left them.
+            Pick up where you left off – pipeline, outreach, and operations synced across
+            Gmail and Seller Central.
           </p>
           <div className="mt-8 grid grid-cols-2 gap-3 text-xs text-slate-300">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm">
               <p className="uppercase tracking-[0.25em] text-[10px] text-slate-400">
                 Pipeline
               </p>
-              <p className="mt-2 text-sm font-semibold">Drag & drop stages</p>
+              <p className="mt-2 text-sm font-semibold">Drag & drop deal stages</p>
+              <p className="mt-1 text-[11px] text-slate-400">Stay on top of follow-ups.</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-sm">
               <p className="uppercase tracking-[0.25em] text-[10px] text-slate-400">
                 Outreach
               </p>
               <p className="mt-2 text-sm font-semibold">AI + Gmail wired in</p>
+              <p className="mt-1 text-[11px] text-slate-400">Send brand-safe emails fast.</p>
             </div>
           </div>
         </div>
 
         {/* Auth card */}
-        <div className="rounded-3xl bg-white text-slate-900 shadow-2xl shadow-slate-900/40 p-6 md:p-8 border border-slate-100">
+        <div className="rounded-3xl bg-slate-950/70 backdrop-blur-xl text-slate-50 shadow-[0_18px_60px_rgba(15,23,42,0.85)] border border-slate-800/80 p-6 md:p-8">
           <h2 className="text-xl font-semibold mb-2 text-center md:text-left">Login</h2>
-          <p className="text-sm text-gray-500 mb-6 text-center md:text-left">
-            Use your workspace credentials or sign in with Google.
+          <p className="text-sm text-slate-400 mb-6 text-center md:text-left">
+            Use your workspace credentials or sign in with Google to jump into Leverage.
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Email</label>
               <input
                 type="email"
                 placeholder="you@brand.com"
-                className="border rounded-lg px-3 py-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                className="border border-slate-700/70 bg-slate-900/60 rounded-lg px-3 py-2 w-full text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <label className="block text-sm font-medium text-slate-200 mb-1">Password</label>
               <input
                 type="password"
                 placeholder="••••••••"
-                className="border rounded-lg px-3 py-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                className="border border-slate-700/70 bg-slate-900/60 rounded-lg px-3 py-2 w-full text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
 
-            <button className="bg-slate-900 text-white w-full py-2.5 rounded-lg text-sm font-medium hover:bg-black transition">
+            <button className="bg-gradient-to-r from-blue-500 via-sky-500 to-emerald-400 text-slate-950 w-full py-2.5 rounded-lg text-sm font-medium hover:brightness-110 transition shadow-lg shadow-sky-500/30">
               Login
             </button>
           </form>
 
           <div className="flex items-center gap-3 my-4">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-xs text-gray-400 uppercase tracking-[0.25em]">
+            <div className="h-px flex-1 bg-slate-700" />
+            <span className="text-xs text-slate-500 uppercase tracking-[0.25em]">
               Or
             </span>
-            <div className="h-px flex-1 bg-gray-200" />
+            <div className="h-px flex-1 bg-slate-700" />
           </div>
 
           {/* ✅ Google Login Button */}
           <button
             type="button"
             onClick={handleGoogleLogin}
-            className="w-full border border-gray-300 rounded-lg py-2.5 flex items-center justify-center gap-2 text-sm hover:bg-gray-50 transition"
+            className="w-full border border-slate-700/80 bg-slate-900/60 rounded-lg py-2.5 flex items-center justify-center gap-2 text-sm hover:bg-slate-900 transition"
           >
             <img
               src="https://www.svgrepo.com/show/475656/google-color.svg"
               alt="Google"
               className="w-5 h-5"
             />
-            <span>Continue with Google</span>
+            <span className="text-slate-100">Continue with Google</span>
           </button>
 
-          <p className="text-xs text-center mt-4 text-gray-500">
+          <p className="text-xs text-center mt-4 text-slate-500">
             Don’t have an account?{" "}
-            <Link to="/signup" className="text-slate-900 font-medium underline-offset-2 hover:underline">
+            <Link
+              to="/signup"
+              className="text-sky-400 font-medium underline-offset-2 hover:underline"
+            >
               Sign up
             </Link>
           </p>
