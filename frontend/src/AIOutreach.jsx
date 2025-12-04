@@ -367,7 +367,7 @@ export default function AIOutreach() {
               </div>
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );
