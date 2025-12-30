@@ -1,0 +1,23 @@
+# Backend .env file for Hostinger deployment
+# Copy this to /var/www/leveragecrm-api/.env and fill in your actual values
+
+# Database
+DATABASE_URL=postgresql://username:password@host:5432/database_name
+
+# Security
+SECRET_KEY=your-super-secret-key-change-this-to-random-string
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# URLs
+FRONTEND_URL=https://leveragecrm.amzdudes.io
+BACKEND_URL=https://api.leveragecrm.amzdudes.io
+
+# OpenAI (for AI email generation)
+OPENAI_API_KEY=sk-your-openai-api-key
+
+# Optional: Logging
+LOG_LEVEL=INFO
+

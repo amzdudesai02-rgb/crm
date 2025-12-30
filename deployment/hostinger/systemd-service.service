@@ -1,0 +1,28 @@
+[Unit]
+Description=LeverageCRM FastAPI Backend
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/leveragecrm-api
+Environment="PATH=/var/www/leveragecrm-api/venv/bin"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/var/www/leveragecrm-api/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/leveragecrm-api
+
+[Install]
+WantedBy=multi-user.target
+

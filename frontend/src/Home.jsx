@@ -203,7 +203,7 @@ export default function Home() {
                     Create workspace
                   </Link>
                   <a
-                    href="https://crm-o52e.onrender.com/docs"
+                    href={`${import.meta.env.VITE_API_BASE_URL || "https://api.leveragecrm.amzdudes.io"}/docs`}
                     target="_blank"
                     rel="noreferrer"
                     className="px-6 py-3 rounded-2xl border border-white/20 text-white hover:bg-white/10 transition"
