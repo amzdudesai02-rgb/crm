@@ -124,8 +124,8 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        {/* OAuth callback from backend */}
-        <Route path="/auth/callback/google" element={<AuthCallback />} />
+  {/* OAuth callback from backend */}
+  <Route path="/auth/callback/google" element={<AuthCallback />} />
         <Route
           path="/dashboard"
           element={
@@ -135,7 +135,7 @@ function App() {
           }
         />
         <Route
-          path="/profile"
+           path="/profile"
           element={
             <RequireAuth>
               <Profile />
@@ -143,7 +143,7 @@ function App() {
           }
         />
         <Route
-          path="/pipeline"
+           path="/pipeline"
           element={
             <RequireAuth>
               <Pipeline />
@@ -151,7 +151,7 @@ function App() {
           }
         />
         <Route
-          path="/ai-outreach"
+           path="/ai-outreach"
           element={
             <RequireAuth>
               <AIOutreach />

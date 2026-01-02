@@ -10,7 +10,7 @@ const defaultStats = { deals: 0, contacts: 0, companies: 0, revenue: 0 };
 
 export default function Dashboard() {
   const token = localStorage.getItem("token");
-  const { loading, user } = useAuthUser();
+  const { loading, user, error } = useAuthUser();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
   const [stats, setStats] = useState(defaultStats);
@@ -31,10 +31,22 @@ export default function Dashboard() {
 
     // ⚡ First: fetch lightweight, user-facing data so the top of dashboard feels instant
     Promise.all([
-      api.get("/pipeline/deals").catch(() => ({ data: [] })),
-      api.get("/contacts").catch(() => ({ data: [] })),
-      api.get("/companies").catch(() => ({ data: [] })),
-      api.get("/reminders").catch(() => ({ data: [] })),
+      api.get("/pipeline/deals").catch((err) => {
+        console.error("Failed to fetch deals:", err);
+        return { data: [] };
+      }),
+      api.get("/contacts").catch((err) => {
+        console.error("Failed to fetch contacts:", err);
+        return { data: [] };
+      }),
+      api.get("/companies").catch((err) => {
+        console.error("Failed to fetch companies:", err);
+        return { data: [] };
+      }),
+      api.get("/reminders").catch((err) => {
+        console.error("Failed to fetch reminders:", err);
+        return { data: [] };
+      }),
     ]).then(([dealsRes, contactsRes, companiesRes, remindersRes]) => {
       const deals = dealsRes.data || [];
       const contacts = contactsRes.data || [];
@@ -60,9 +72,18 @@ export default function Dashboard() {
 
     // 🛰 Then: load heavier operations/intelligence data in the background
     Promise.all([
-      api.get("/orders").catch(() => ({ data: [] })),
-      api.get("/shipments").catch(() => ({ data: [] })),
-      api.get("/invoices").catch(() => ({ data: [] })),
+      api.get("/orders").catch((err) => {
+        console.error("Failed to fetch orders:", err);
+        return { data: [] };
+      }),
+      api.get("/shipments").catch((err) => {
+        console.error("Failed to fetch shipments:", err);
+        return { data: [] };
+      }),
+      api.get("/invoices").catch((err) => {
+        console.error("Failed to fetch invoices:", err);
+        return { data: [] };
+      }),
     ]).then(([ordersRes, shipmentsRes, invoicesRes]) => {
       const orders = ordersRes.data || [];
       const shipments = shipmentsRes.data || [];
@@ -76,7 +97,33 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-center">
+          <div className="text-gray-500 mb-2">Loading dashboard...</div>
+          <div className="text-xs text-gray-400">Connecting to API...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md p-6">
+          <div className="text-red-600 mb-4 font-semibold">⚠️ Connection Error</div>
+          <div className="text-gray-700 mb-4">{error}</div>
+          <div className="text-xs text-gray-500 mb-4">
+            API URL: {import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"}
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem("token");
+              navigate("/login");
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Go to Login
+          </button>
+        </div>
       </div>
     );
   }
@@ -484,7 +531,7 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
-            </div>
+          </div>
           )}
 
           {activeTab === "contacts" && <ContactsTab />}
