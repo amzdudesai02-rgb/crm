@@ -208,7 +208,8 @@ frontend_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://crm-kappa-pied.vercel.app",  # Production frontend (Vercel backup)
-    "https://leveragecrm.amzdudes.io",     # Production frontend (Hostinger)
+    "https://leveragecrm.amzdudes.io",     # Production frontend (Hostinger - old)
+    "https://crm.amzdudes.io",             # Production frontend (Hostinger - new)
 ]
 
 app.add_middleware(
