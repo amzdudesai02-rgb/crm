@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "./api";
+import logo from "./assets/logo.png";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -52,9 +53,11 @@ export default function Login() {
         {/* Brand side */}
         <div className="hidden md:block">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-11 h-11 rounded-2xl bg-white text-slate-900 font-black grid place-items-center shadow-lg shadow-blue-500/40">
-              LC
-            </div>
+            <img 
+              src={logo} 
+              alt="amzDUDES Logo" 
+              className="h-11 w-auto"
+            />
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Leverage CRM</p>
               <p className="text-sm text-slate-200">Amazon Wholesale OS</p>

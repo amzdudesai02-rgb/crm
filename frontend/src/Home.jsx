@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import logo from "./assets/logo.png";
 
 const featureCards = [
   {
@@ -49,9 +50,11 @@ export default function Home() {
         <div className="relative z-10 max-w-6xl mx-auto px-6 py-10 space-y-16">
           <header className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-white text-slate-900 font-black grid place-items-center">
-                LC
-              </div>
+              <img 
+                src={logo} 
+                alt="amzDUDES Logo" 
+                className="h-11 w-auto"
+              />
               <div>
                 <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Leverage</p>
                 <h1 className="text-xl font-semibold">Amazon Wholesale OS</h1>

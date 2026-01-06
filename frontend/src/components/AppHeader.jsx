@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import useAuthUser from "../hooks/useAuthUser";
 import toast from "react-hot-toast";
 import api from "../api";
+import logo from "../assets/logo.png";
 
 export default function AppHeader() {
   const navigate = useNavigate();
@@ -46,9 +47,11 @@ export default function AppHeader() {
           className="flex items-center gap-3 cursor-pointer"
           onClick={() => navigate("/dashboard")}
         >
-          <div className="w-9 h-9 rounded-xl bg-gray-900 text-white grid place-items-center font-bold">
-            LC
-          </div>
+          <img 
+            src={logo} 
+            alt="amzDUDES Logo" 
+            className="h-9 w-auto"
+          />
           <div>
             <h1 className="text-lg font-semibold">Leverage CRM</h1>
             <p className="text-xs text-gray-500">
