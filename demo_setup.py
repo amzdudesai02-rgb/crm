@@ -95,11 +95,7 @@ REMINDERS = [
     {"title": "Call Premium Products", "description": "Discuss MOQ requirements", "due_date_days": 1},
 ]
 
-def hash_password(password: str) -> str:
-    """Hash password using bcrypt"""
-    from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return pwd_context.hash(password)
+# Password hashing is now done inline in seed_demo_data() using backend's function
 
 def seed_demo_data():
     """Seed database with demo data"""
@@ -113,6 +109,10 @@ def seed_demo_data():
         print("\n1. Creating demo user...")
         demo_user = db.query(User).filter(User.email == DEMO_USER_EMAIL).first()
         if not demo_user:
+            # Use backend's hash_password function
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+            from app import hash_password as backend_hash_password
+            
             # Check if admin role exists, create if not
             admin_role = db.query(Role).filter(Role.name == "admin").first()
             if not admin_role:
@@ -120,11 +120,19 @@ def seed_demo_data():
                 db.add(admin_role)
                 db.commit()
             
+            # Hash password using backend function
+            try:
+                hashed_pwd = backend_hash_password(DEMO_USER_PASSWORD)
+            except Exception as e:
+                print(f"   ⚠️ Password hashing issue: {e}")
+                print(f"   💡 Try signing up via frontend instead, or use a shorter password")
+                raise
+            
             demo_user = User(
                 id=uuid4(),
                 email=DEMO_USER_EMAIL,
                 name=DEMO_USER_NAME,
-                password=hash_password(DEMO_USER_PASSWORD),
+                password=hashed_pwd,
                 role_id=admin_role.id,
                 created_at=datetime.utcnow(),
             )
