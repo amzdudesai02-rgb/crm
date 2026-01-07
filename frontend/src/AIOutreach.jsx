@@ -4,6 +4,17 @@ import toast from "react-hot-toast";
 import AppHeader from "./components/AppHeader";
 
 export default function AIOutreach() {
+  // -------------------- Restore token immediately (synchronously, before any API calls) --------------------
+  // This must happen before any state or API calls to prevent logout during OAuth redirect
+  (() => {
+    const tokenBackup = sessionStorage.getItem("oauth_token_backup");
+    const currentToken = localStorage.getItem("token");
+    if (tokenBackup && !currentToken) {
+      localStorage.setItem("token", tokenBackup);
+      console.log("✅ Restored token from OAuth backup (synchronously)");
+    }
+  })();
+
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [deals, setDeals] = useState([]);
@@ -19,6 +30,15 @@ export default function AIOutreach() {
   const [recipient, setRecipient] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
   const [sending, setSending] = useState(false);
+
+  // -------------------- Clean up OAuth backup after component mounts --------------------
+  useEffect(() => {
+    // Clean up backup after a short delay to allow API calls to use it
+    setTimeout(() => {
+      sessionStorage.removeItem("oauth_token_backup");
+      sessionStorage.removeItem("gmail_oauth_return_path");
+    }, 2000);
+  }, []);
 
   // -------------------- Fetch Templates + User --------------------
   useEffect(() => {
@@ -103,6 +123,14 @@ export default function AIOutreach() {
   // -------------------- Connect Gmail --------------------
   const handleConnectGmail = () => {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+    // Store current path to restore after OAuth
+    const currentPath = window.location.pathname;
+    sessionStorage.setItem("gmail_oauth_return_path", currentPath);
+    // Store token in sessionStorage as backup (localStorage should persist, but this is extra safety)
+    const token = localStorage.getItem("token");
+    if (token) {
+      sessionStorage.setItem("oauth_token_backup", token);
+    }
     window.location.href = `${apiBaseUrl}/auth/gmail`;
   };
 

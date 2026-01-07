@@ -104,7 +104,20 @@ function CommandPalette({ open, onClose }) {
 
 // Simple auth gate that always reads latest token from localStorage
 function RequireAuth({ children }) {
-  const token = localStorage.getItem("token");
+  // Check for token in localStorage
+  let token = localStorage.getItem("token");
+  
+  // If no token, try to restore from OAuth backup (safety measure)
+  if (!token) {
+    const tokenBackup = sessionStorage.getItem("oauth_token_backup");
+    if (tokenBackup) {
+      localStorage.setItem("token", tokenBackup);
+      token = tokenBackup;
+      sessionStorage.removeItem("oauth_token_backup");
+      console.log("✅ Restored token from OAuth backup in RequireAuth");
+    }
+  }
+  
   if (!token) {
     return <Navigate to="/login" replace />;
   }
