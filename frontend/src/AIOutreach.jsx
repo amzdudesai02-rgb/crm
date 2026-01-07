@@ -130,7 +130,12 @@ export default function AIOutreach() {
     const token = localStorage.getItem("token");
     if (token) {
       sessionStorage.setItem("oauth_token_backup", token);
+      console.log("💾 [Gmail OAuth] Token backed up to sessionStorage before redirect");
+    } else {
+      console.warn("⚠️ [Gmail OAuth] No token found to backup!");
     }
+    // Set a flag to indicate we're about to do OAuth (prevents token clearing)
+    sessionStorage.setItem("gmail_oauth_in_progress", "true");
     window.location.href = `${apiBaseUrl}/auth/gmail`;
   };
 

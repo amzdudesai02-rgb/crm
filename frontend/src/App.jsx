@@ -163,7 +163,8 @@ function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const isGmailOAuthReturn = urlParams.get("gmail_connected") === "true" || 
                                 urlParams.get("gmail_error") ||
-                                sessionStorage.getItem("oauth_token_backup");
+                                sessionStorage.getItem("oauth_token_backup") ||
+                                sessionStorage.getItem("gmail_oauth_in_progress");
     
     if (isGmailOAuthReturn) {
       const tokenBackup = sessionStorage.getItem("oauth_token_backup");
@@ -176,6 +177,8 @@ function App() {
       } else if (!currentToken) {
         console.warn("⚠️ [App] Returning from Gmail OAuth but no token backup found!");
       }
+      // Clear the in-progress flag
+      sessionStorage.removeItem("gmail_oauth_in_progress");
     }
   })();
 

@@ -24,7 +24,8 @@ api.interceptors.response.use(
       const urlParams = new URLSearchParams(window.location.search);
       const isOAuthReturn = urlParams.get("gmail_connected") === "true" || 
                           urlParams.get("gmail_error") || 
-                          sessionStorage.getItem("oauth_token_backup");
+                          sessionStorage.getItem("oauth_token_backup") ||
+                          sessionStorage.getItem("gmail_oauth_in_progress");
       
       // If we have a token backup, try to restore it first
       if (isOAuthReturn) {
