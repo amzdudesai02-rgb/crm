@@ -111,17 +111,31 @@ def verify_password(plain: str, hashed: str) -> bool:
 def hash_password(password: str) -> str:
     """Hash password with bcrypt, handling compatibility issues"""
     try:
+        # Ensure password is not None and is a string
+        if not password:
+            raise ValueError("Password cannot be empty")
+        
         # Truncate password to 72 bytes if needed (bcrypt limit)
-        password_bytes = password.encode('utf-8')
+        password_str = str(password)
+        password_bytes = password_str.encode('utf-8')
         if len(password_bytes) > 72:
             password_bytes = password_bytes[:72]
-            password = password_bytes.decode('utf-8', errors='ignore')
-        return pwd_context.hash(password)
+            password_str = password_bytes.decode('utf-8', errors='ignore')
+        
+        # Hash with bcrypt
+        return pwd_context.hash(password_str)
     except Exception as e:
-        # Fallback: use a simpler hashing if bcrypt fails
-        import hashlib
-        print(f"⚠️ Bcrypt error, using fallback: {e}")
-        return hashlib.sha256(password.encode()).hexdigest()
+        # Fallback: use pbkdf2_sha256 if bcrypt fails
+        print(f"⚠️ Bcrypt error, using pbkdf2 fallback: {e}")
+        try:
+            # Try pbkdf2 as fallback (more secure than sha256)
+            from passlib.context import CryptContext
+            fallback_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+            return fallback_context.hash(str(password))
+        except:
+            # Last resort: sha256 (not recommended for production)
+            import hashlib
+            return hashlib.sha256(str(password).encode()).hexdigest()
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
