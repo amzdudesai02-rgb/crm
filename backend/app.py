@@ -265,6 +265,17 @@ else:
 def read_root():
     return {"message": "Leverage CRM backend is running 🚀"}
 
+@app.get("/debug/cors")
+def debug_cors(request: Request):
+    """Debug endpoint to check CORS configuration"""
+    origin = request.headers.get("origin")
+    return {
+        "allowed_origins": frontend_origins,
+        "request_origin": origin,
+        "origin_allowed": origin in frontend_origins if origin else False,
+        "cors_configured": True,
+    }
+
 
 @app.get("/debug/oauth")
 def debug_oauth():
