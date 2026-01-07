@@ -1018,13 +1018,17 @@ def gmail_auth_start(request: Request):
     host = request.headers.get('host', '')
     scheme = request.headers.get('x-forwarded-proto', 'http')
     
-    # Determine redirect URI based on environment
-    if host and ('onrender.com' in host or 'render.com' in host):
-        # Production on Render
+    # Use BACKEND_URL from environment if available, otherwise detect from request
+    if BACKEND_URL and BACKEND_URL != "http://127.0.0.1:8000":
+        # Use configured BACKEND_URL
+        redirect_uri = f"{BACKEND_URL}/auth/gmail/callback"
+        print(f"🔍 Using BACKEND_URL from env: {redirect_uri}")
+    elif host and ('onrender.com' in host or 'render.com' in host or 'api.crm.amzdudes.io' in host):
+        # Production on Render or custom domain
         if scheme not in ['http', 'https']:
             scheme = 'https'
         redirect_uri = f"{scheme}://{host}/auth/gmail/callback"
-        print(f"🔍 Detected production environment (Render), using redirect_uri: {redirect_uri}")
+        print(f"🔍 Detected production environment, using redirect_uri: {redirect_uri}")
     else:
         # Local development
         redirect_uri = "http://127.0.0.1:8000/auth/gmail/callback"
@@ -1093,13 +1097,17 @@ def gmail_auth_callback(request: Request, db: Session = Depends(get_db)):
         host = request.headers.get('host', '')
         scheme = request.headers.get('x-forwarded-proto', 'http')
         
-        # Determine redirect URI based on environment (must match /auth/gmail)
-        if host and ('onrender.com' in host or 'render.com' in host):
-            # Production on Render
+        # Use BACKEND_URL from environment if available, otherwise detect from request
+        if BACKEND_URL and BACKEND_URL != "http://127.0.0.1:8000":
+            # Use configured BACKEND_URL
+            redirect_uri = f"{BACKEND_URL}/auth/gmail/callback"
+            print(f"🔍 Callback: Using BACKEND_URL from env: {redirect_uri}")
+        elif host and ('onrender.com' in host or 'render.com' in host or 'api.crm.amzdudes.io' in host):
+            # Production on Render or custom domain
             if scheme not in ['http', 'https']:
                 scheme = 'https'
             redirect_uri = f"{scheme}://{host}/auth/gmail/callback"
-            print(f"🔍 Callback: Detected production environment (Render), using redirect_uri: {redirect_uri}")
+            print(f"🔍 Callback: Detected production environment, using redirect_uri: {redirect_uri}")
         else:
             # Local development
             redirect_uri = "http://127.0.0.1:8000/auth/gmail/callback"
