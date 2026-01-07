@@ -72,7 +72,13 @@ SECRET_KEY = "supersecretkeychangeit"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Configure password context with bcrypt, skip bug detection to avoid initialization errors
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__ident="2b",  # Use bcrypt 2b format
+    bcrypt__rounds=12,   # Number of rounds
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
