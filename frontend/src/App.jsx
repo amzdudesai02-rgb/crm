@@ -17,7 +17,18 @@ function OAuthTokenHandler() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check for token in URL query params (from Google OAuth redirect)
+    // CRITICAL: Restore token from Gmail OAuth backup FIRST (before any route checks)
+    // This must happen synchronously on every route change to prevent logout
+    const tokenBackup = sessionStorage.getItem("oauth_token_backup");
+    const currentToken = localStorage.getItem("token");
+    
+    if (tokenBackup && !currentToken) {
+      localStorage.setItem("token", tokenBackup);
+      console.log("✅ [OAuthTokenHandler] Restored token from Gmail OAuth backup");
+      // Don't remove backup yet - let it persist for a moment in case of race conditions
+    }
+    
+    // Check for token in URL query params (from Google OAuth login redirect)
     const urlParams = new URLSearchParams(location.search);
     const token = urlParams.get("token");
     
@@ -31,6 +42,14 @@ function OAuthTokenHandler() {
       
       // Redirect to dashboard
       navigate("/dashboard", { replace: true });
+    }
+    
+    // Clean up Gmail OAuth backup after a delay (to ensure all components have checked)
+    if (tokenBackup) {
+      setTimeout(() => {
+        sessionStorage.removeItem("oauth_token_backup");
+        sessionStorage.removeItem("gmail_oauth_return_path");
+      }, 3000);
     }
   }, [location.search, navigate]);
 
@@ -107,14 +126,24 @@ function RequireAuth({ children }) {
   // Check for token in localStorage
   let token = localStorage.getItem("token");
   
-  // If no token, try to restore from OAuth backup (safety measure)
+  // If no token, check if we're returning from Gmail OAuth and restore token
   if (!token) {
-    const tokenBackup = sessionStorage.getItem("oauth_token_backup");
-    if (tokenBackup) {
-      localStorage.setItem("token", tokenBackup);
-      token = tokenBackup;
-      sessionStorage.removeItem("oauth_token_backup");
-      console.log("✅ Restored token from OAuth backup in RequireAuth");
+    // Check URL params to see if we're returning from OAuth
+    const urlParams = new URLSearchParams(window.location.search);
+    const isGmailOAuthReturn = urlParams.get("gmail_connected") === "true" || 
+                               urlParams.get("gmail_error") ||
+                               sessionStorage.getItem("oauth_token_backup");
+    
+    if (isGmailOAuthReturn) {
+      const tokenBackup = sessionStorage.getItem("oauth_token_backup");
+      if (tokenBackup) {
+        localStorage.setItem("token", tokenBackup);
+        token = tokenBackup;
+        console.log("✅ [RequireAuth] Restored token from Gmail OAuth backup (synchronously)");
+        // Don't remove backup yet - let OAuthTokenHandler clean it up after a delay
+      } else {
+        console.warn("⚠️ [RequireAuth] Gmail OAuth return detected but no token backup found!");
+      }
     }
   }
   
@@ -126,6 +155,29 @@ function RequireAuth({ children }) {
 
 function App() {
   const [commandOpen, setCommandOpen] = useState(false);
+
+  // CRITICAL: Restore token from Gmail OAuth backup IMMEDIATELY (before Router renders)
+  // This must happen synchronously on every render to prevent logout during OAuth redirect
+  (() => {
+    // Check if we're returning from Gmail OAuth (by checking URL params or backup)
+    const urlParams = new URLSearchParams(window.location.search);
+    const isGmailOAuthReturn = urlParams.get("gmail_connected") === "true" || 
+                                urlParams.get("gmail_error") ||
+                                sessionStorage.getItem("oauth_token_backup");
+    
+    if (isGmailOAuthReturn) {
+      const tokenBackup = sessionStorage.getItem("oauth_token_backup");
+      const currentToken = localStorage.getItem("token");
+      if (tokenBackup) {
+        // Always restore from backup if we're returning from OAuth, even if token exists
+        // (in case the token got corrupted or cleared during redirect)
+        localStorage.setItem("token", tokenBackup);
+        console.log("✅ [App] Restored token from Gmail OAuth backup (returning from OAuth)");
+      } else if (!currentToken) {
+        console.warn("⚠️ [App] Returning from Gmail OAuth but no token backup found!");
+      }
+    }
+  })();
 
   return (
     <Router>
