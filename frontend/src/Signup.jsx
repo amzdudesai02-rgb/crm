@@ -17,10 +17,26 @@ export default function Signup() {
       alert("Signup successful! Please login.");
       navigate("/login");
     } catch (err) {
-      const errorMessage = err.response?.data?.detail || "Signup failed. Try another email.";
+      // Get error message from response
+      let errorMessage = "Signup failed. Try another email.";
+      
+      if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       alert(errorMessage);
+      
       // If demo account exists or email already registered, redirect to login
-      if (errorMessage.includes("already exists") || errorMessage.includes("already registered")) {
+      if (
+        errorMessage.includes("already exists") || 
+        errorMessage.includes("already registered") ||
+        errorMessage.includes("Please login") ||
+        form.email === "no-reply@amzdudes.io"
+      ) {
         setTimeout(() => navigate("/login"), 1500);
       }
     }
