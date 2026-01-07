@@ -105,7 +105,34 @@ def get_db():
 
 # ---- Password + JWT helpers ----
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    """Verify password, handling multiple hash formats"""
+    if not plain or not hashed:
+        return False
+    
+    try:
+        # Try bcrypt first (most common)
+        return pwd_context.verify(plain, hashed)
+    except Exception as e:
+        # If bcrypt fails, try other formats
+        try:
+            # Check if it's a sha256 hash (fallback format)
+            import hashlib
+            if len(hashed) == 64:  # SHA256 hex digest is 64 chars
+                test_hash = hashlib.sha256(str(plain).encode()).hexdigest()
+                return test_hash == hashed
+        except:
+            pass
+        
+        # Try pbkdf2 as fallback
+        try:
+            from passlib.context import CryptContext
+            fallback_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+            return fallback_context.verify(plain, hashed)
+        except:
+            pass
+        
+        print(f"⚠️ Password verification failed: {e}")
+        return False
 
 
 def hash_password(password: str) -> str:
