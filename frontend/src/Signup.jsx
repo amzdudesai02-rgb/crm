@@ -16,8 +16,13 @@ export default function Signup() {
       });
       alert("Signup successful! Please login.");
       navigate("/login");
-    } catch {
-      alert("Signup failed. Try another email.");
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || "Signup failed. Try another email.";
+      alert(errorMessage);
+      // If demo account exists or email already registered, redirect to login
+      if (errorMessage.includes("already exists") || errorMessage.includes("already registered")) {
+        setTimeout(() => navigate("/login"), 1500);
+      }
     }
   };
 
